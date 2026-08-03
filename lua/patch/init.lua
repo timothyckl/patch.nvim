@@ -26,16 +26,19 @@ local function get_selection_lines()
   return math.min(start_line, end_line), math.max(start_line, end_line)
 end
 
---- Create a listed scratch buffer containing the given lines.
+--- Format a named capture group for display.
 ---
---- @param lines string[] lines to write into the buffer
-local function write_scratch_buffer(lines)
-  local buf = vim.api.nvim_create_buf(true, true)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+--- @param name
+--- @param lines string[] captured lines
+--- @return string formatted_group
+local function format_capture_group(name, lines)
+  local contents = #lines > 0 and table.concat(lines, "\n") or "(empty)"
+  return string.format("--- %s ---\n%s", name, contents)
 end
 
---- Capture the current visual selection into a scratch buffer and print it.
+--- Capture the current buffer around its visual selection and print each group.
 function M.capture_selection()
+  local source_buf = vim.api.nvim_get_current_buf()
   leave_visual_mode()
 
   local first_line, last_line = get_selection_lines()
@@ -44,11 +47,16 @@ function M.capture_selection()
     return
   end
 
-  local lines = vim.api.nvim_buf_get_lines(0, first_line - 1, last_line, false)
+  local capture = {
+    before = vim.api.nvim_buf_get_lines(source_buf, 0, first_line - 1, false),
+    selected = vim.api.nvim_buf_get_lines(source_buf, first_line - 1, last_line, false),
+    after = vim.api.nvim_buf_get_lines(source_buf, last_line, -1, false)
+  }
 
-  write_scratch_buffer(lines)
-
-  print(table.concat(lines, "\n"))
-end
+  print(table.concat({
+    format_capture_group("BEFORE", capture.before),
+    format_capture_group("SELECTED", capture.selected),
+    format_capture_group("AFTER", capture.after),
+  }, "\n"))end
 
 return M
