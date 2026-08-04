@@ -4,7 +4,12 @@ local client = require("patch.client")
 
 local M = {}
 
---- Capture the current buffer around its visual selection and print each group.
+--- Abort the active patch request, if one exists.
+function M.cancel()
+  client.cancel()
+end
+
+--- Capture the visual selection and send it to the patch client with buffer context.
 function M.capture_selection()
   local capture = selection.capture()
 
