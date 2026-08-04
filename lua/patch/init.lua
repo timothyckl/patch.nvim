@@ -1,5 +1,6 @@
 local prompt = require("patch.prompt")
 local selection = require("patch.selection")
+local client = require("patch.client")
 
 local M = {}
 
@@ -12,7 +13,8 @@ function M.capture_selection()
     return
   end
 
-    print(prompt.format_capture(capture))
-  end
+  -- print(prompt.format_capture(capture))
+  client.request(prompt.format_capture(capture))
+end
 
 return M
