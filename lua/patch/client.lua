@@ -17,7 +17,7 @@ end
 --- Send a prompt to Pi and display its final response.
 ---
 --- @param message string prompt containing the selection and surrounding context
-function M.request(message)
+function M.request(message, on_result)
   local process
 
   local stdout_buffer = ""
@@ -96,10 +96,25 @@ function M.request(message)
       return
     end
 
+    -- if record.type == "agent_settled" then
+    --   finished = true
+    --   display(assistant_text or "Pi returned empty response.")
+    --   close_process()
+    -- end
+
     if record.type == "agent_settled" then
       finished = true
-      display(assistant_text or "Pi returned empty response.")
+
+      local replacement = assistant_text
       close_process()
+
+      if replacement then
+        vim.schedule(function()
+          on_result(replacement)
+        end)
+      else
+        display("Pi returned empty response.")
+      end
     end
   end
 
@@ -140,7 +155,7 @@ function M.request(message)
 
   process:write(vim.json.encode({
     type = "prompt",
-    message = "Repeat what the selected content is.\n" .. message,
+    message = message,
   }) .. "\n")
 end
 

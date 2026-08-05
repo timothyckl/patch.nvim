@@ -43,6 +43,7 @@ function M.capture()
     return nil
   end
 
+  -- TODO: Retain the source buffer and line range for applying reviewed patches.
   return {
     before = vim.api.nvim_buf_get_lines(source_buf, 0, first_line - 1, false),
     selected = vim.api.nvim_buf_get_lines(source_buf, first_line - 1, last_line, false),

@@ -22,4 +22,11 @@ function M.format_capture(capture)
   }, "\n")
 end
 
+function M.build(capture, instruction)
+  return table.concat({
+    M.format_capture(capture),
+    string.format("--- INSTRUCTION ---\n%s", instruction),
+  }, "\n")
+end
+
 return M

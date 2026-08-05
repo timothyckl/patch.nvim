@@ -1,24 +1,26 @@
 local prompt = require("patch.prompt")
 local selection = require("patch.selection")
 local client = require("patch.client")
+local ui = require("patch.ui")
 
 local M = {}
 
---- Abort the active patch request, if one exists.
-function M.cancel()
-  client.cancel()
-end
-
---- Capture the visual selection and send it to the patch client with buffer context.
-function M.capture_selection()
+function M.start()
   local capture = selection.capture()
 
   if not capture then
-    print("patch: no visual selection found")
+    print("patch: no selection found.")
     return
   end
 
-  client.request(prompt.format_capture(capture))
+  ui.open_input(function(instruction)
+    local message = prompt.build(capture, instruction)
+
+    client.request(message, function(replacement)
+      print(replacement)
+    end)
+  end)
+
 end
 
 return M
