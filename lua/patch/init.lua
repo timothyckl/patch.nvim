@@ -18,7 +18,6 @@ function M.capture_selection()
     return
   end
 
-  -- print(prompt.format_capture(capture))
   client.request(prompt.format_capture(capture))
 end
 

@@ -1,21 +1,13 @@
 local M = {}
 
---- @type vim.SystemObj|nil
-M.process = nil
-
 local SYSTEM_PROMPT = "You are an inline code editor. Given the selection and an instruction, reply with only the replacement code for the SELECTED region. No commentary, no explanations, no markdown fences."
 
---- Check whether a Pi process is active.
----
---- @return boolean is_running
-function M.is_running()
-  return M.process ~= nil
-end
+local active_process = nil
 
 --- Abort the active Pi request, if one exists.
 function M.cancel()
-  if M.process then
-    M.process:write(vim.json.encode({ type = "abort" }) .. "\n")
+  if active_process then
+    active_process:write(vim.json.encode({ type = "abort" }) .. "\n")
     vim.api.nvim_echo({ { "Cancelled", "Comment" } }, false, {})
   else
     vim.api.nvim_echo({ { "Nothing to cancel", "Comment" } }, false, {})
@@ -61,8 +53,8 @@ function M.request(message)
 
   --- Clear references to this request's process.
   local function clear_process()
-    if M.process == process then
-      M.process = nil
+    if active_process == process then
+      active_process = nil
     end
 
     process = nil
@@ -144,7 +136,7 @@ function M.request(message)
     handle_exit
   )
 
-  M.process = process
+  active_process = process
 
   process:write(vim.json.encode({
     type = "prompt",
