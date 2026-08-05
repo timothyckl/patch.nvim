@@ -5,6 +5,8 @@ local ui = require("patch.ui")
 
 local M = {}
 
+-- TODO: If the submitted instruction is empty or whitespace-only, halt without starting generation.
+--       See lua/patch/ui/
 function M.start()
   local capture = selection.capture()
 

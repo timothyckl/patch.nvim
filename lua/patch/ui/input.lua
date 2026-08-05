@@ -26,10 +26,6 @@ local function handle_close()
   print("Input closed!")
 end
 
--- local function handle_submit(value)
---   print("Value submitted: ", value)
--- end
-
 local function handle_update() end
 
 function M.open(on_submit)
