@@ -16,9 +16,9 @@ end
 --- @return string formatted_capture
 function M.format_capture(capture)
   return table.concat({
-    format_group("BEFORE", capture.before),
-    format_group("SELECTED", capture.selected),
-    format_group("AFTER", capture.after),
+    format_group("BEFORE", capture.content.before),
+    format_group("SELECTED", capture.content.selected),
+    format_group("AFTER", capture.content.after),
   }, "\n")
 end
 

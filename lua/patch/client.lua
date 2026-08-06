@@ -96,12 +96,6 @@ function M.request(message, on_result)
       return
     end
 
-    -- if record.type == "agent_settled" then
-    --   finished = true
-    --   display(assistant_text or "Pi returned empty response.")
-    --   close_process()
-    -- end
-
     if record.type == "agent_settled" then
       finished = true
 
