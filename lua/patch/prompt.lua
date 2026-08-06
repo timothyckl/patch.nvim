@@ -22,6 +22,11 @@ function M.format_capture(capture)
   }, "\n")
 end
 
+--- Build a model prompt from captured buffer context and the user's instruction.
+---
+--- @param capture PatchCapture captured buffer context
+--- @param instruction string requested transformation
+--- @return string message
 function M.build(capture, instruction)
   return table.concat({
     M.format_capture(capture),

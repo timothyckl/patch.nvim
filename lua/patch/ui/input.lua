@@ -28,6 +28,9 @@ end
 
 local function handle_update() end
 
+--- Open the instruction input and deliver its submitted value.
+---
+--- @param on_submit fun(instruction: string)
 function M.open(on_submit)
   local input = Input(popup_options, {
     prompt = "> ",

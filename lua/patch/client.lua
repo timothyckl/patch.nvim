@@ -14,9 +14,10 @@ function M.cancel()
   end
 end
 
---- Send a prompt to Pi and display its final response.
+--- Send a prompt to Pi and deliver its final assistant text.
 ---
 --- @param message string prompt containing the selection and surrounding context
+--- @param on_result fun(replacement: string) receives the generated replacement
 function M.request(message, on_result)
   local process
 
@@ -102,13 +103,16 @@ function M.request(message, on_result)
       local replacement = assistant_text
       close_process()
 
-      if replacement then
-        vim.schedule(function()
+      vim.schedule(function()
+        vim.api.nvim_echo({ { "" } }, false, {})
+
+        if replacement == nil then
+          print("Pi returned empty response.")
+        else
           on_result(replacement)
-        end)
-      else
-        display("Pi returned empty response.")
-      end
+        end
+      end)
+      return
     end
   end
 

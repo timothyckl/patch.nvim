@@ -1,9 +1,11 @@
 local M = {}
 
+local namespace = vim.api.nvim_create_namespace("patch")
+
 --- @class PatchLocation
 --- @field source_buf integer source buffer handle
---- @field start_line integer 1-indexed first selected line
---- @field end_line integer 1-indexed last selected line
+--- @field namespace integer extmark namespace
+--- @field extmark_id integer selection range extmark
 
 --- @class PatchContent
 --- @field before string[] lines before the selection
@@ -42,6 +44,8 @@ end
 
 --- Capture the current buffer around its visual selection.
 ---
+--- The extmark keeps the selected line range anchored while surrounding lines change.
+---
 --- @return PatchCapture|nil capture
 function M.capture()
   local source_buf = vim.api.nvim_get_current_buf()
@@ -52,11 +56,24 @@ function M.capture()
     return nil
   end
 
+  local extmark_id = vim.api.nvim_buf_set_extmark(
+    source_buf,
+    namespace,
+    start_line - 1,
+    0,
+    {
+      end_row = end_line,
+      end_col = 0,
+      right_gravity = true,
+      end_right_gravity = false,
+    }
+  )
+
   return {
     location = {
       source_buf = source_buf,
-      start_line = start_line,
-      end_line = end_line,
+      namespace = namespace,
+      extmark_id = extmark_id,
     },
     content = {
       before = vim.api.nvim_buf_get_lines(source_buf, 0, start_line - 1, false),
