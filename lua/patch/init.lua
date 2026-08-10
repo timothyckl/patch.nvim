@@ -21,7 +21,13 @@ function M.start()
     local message = prompt.build(capture, instruction)
 
     client.request(message, function(response)
-      replacement.apply(capture.location, response)
+      local proposal = replacement.apply(capture.location, response)
+
+      -- TODO: Map these to key bindings
+      -- replacement.accept(proposal)
+      -- replacement.reject(proposal)
+      -- replacement.retry(proposal)
+
     end)
   end)
 end

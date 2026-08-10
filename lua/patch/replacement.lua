@@ -2,9 +2,13 @@ local M = {}
 
 local namespace = vim.api.nvim_create_namespace("patch-replacement")
 
+---@class PatchProposal
+---@field location PatchLocation
+---@field generated_mark integer|nil
+---@field actions_mark integer
+---@field status "pending"|"retrying"|"finished"
+
 --- Convert model output into lines accepted by nvim_buf_set_lines.
----
---- A terminal newline belongs to the textual response, not a new buffer line.
 ---
 --- @param response string
 --- @return string[] lines
@@ -36,10 +40,13 @@ local function resolve_range(location)
   }
 end
 
+--- TODO: Map actions to options
+--- TODO: Document this function 
 --- Resolve a tracked selection and replace its current line range.
 ---
 --- @param location PatchLocation
 --- @param response string
+--- @return PatchProposal
 function M.apply(location, response)
   local range = resolve_range(location)
   local lines = to_lines(response)
@@ -68,8 +75,10 @@ function M.apply(location, response)
     }
   )
 
+  local patch_mark
+
   if #lines > 0 then
-    vim.api.nvim_buf_set_extmark(
+    patch_mark = vim.api.nvim_buf_set_extmark(
       location.source_buf,
       namespace,
       range.end_row,
@@ -82,6 +91,99 @@ function M.apply(location, response)
       }
     )
   end
+
+  local options_mark = vim.api.nvim_buf_set_extmark(
+    location.source_buf,
+    namespace,
+    range.end_row + #lines - 1,
+    0,
+    {
+      virt_lines = {
+        {
+          { "[a] Accept   [r] Reject   [R] Retry", "Comment" },
+        },
+      },
+    }
+  )
+
+  return {
+    location = location,
+    generated_mark = patch_mark,
+    actions_mark = options_mark,
+    status = "pending"
+  }
+end
+
+function M.accept(proposal)
+  if proposal.status ~= "pending" then
+    return
+  end
+
+  local location = proposal.location
+  local source_buf = location.source_buf
+  local range = resolve_range(location)
+
+  -- remove original selected lines. replacement will take over.
+  vim.api.nvim_buf_set_lines(
+    source_buf,
+    range.start_row,
+    range.end_row,
+    false,
+    {}
+  )
+
+  -- clear "patch" namespace
+  vim.api.nvim_buf_clear_namespace(
+    source_buf,
+    location.namespace,
+    range.start_row,
+    range.end_row
+  )
+
+  -- delete extmark tracking selected lines in "patch" namespace
+  vim.api.nvim_buf_del_extmark(
+    source_buf,
+    location.namespace,
+    location.extmark_id
+  )
+
+  -- clear generated replacement and action prompt extmarks
+  if proposal.generated_mark then
+    vim.api.nvim_buf_del_extmark(
+      source_buf,
+      namespace,
+      proposal.generated_mark
+    )
+  end
+
+  -- remove action prompt extmark
+  vim.api.nvim_buf_del_extmark(
+    source_buf,
+    namespace,
+    proposal.actions_mark
+  )
+
+  proposal.status = "finished"
+end
+
+function M.reject(proposal)
+  if proposal.status ~= "pending" then
+    return
+  end
+
+  -- ...
+
+  proposal.status = "finished"
+end
+
+function M.retry(proposal)
+  if proposal.status ~= "pending" then
+    return
+  end
+
+  -- ...
+
+  proposal.status = "retrying"
 end
 
 return M
