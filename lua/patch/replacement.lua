@@ -5,13 +5,15 @@ local namespace = vim.api.nvim_create_namespace("patch-replacement")
 ---@class PatchProposal
 ---@field location PatchLocation
 ---@field generated_mark integer|nil
----@field actions_mark integer
+---@field actions_mark integer|nil
 ---@field status "pending"|"retrying"|"finished"
 
 --- Convert model output into lines accepted by nvim_buf_set_lines.
 ---
---- @param response string
---- @return string[] lines
+--- A terminal newline belongs to the textual response, not a new buffer line.
+---
+---@param response string
+---@return string[] lines
 local function to_lines(response)
   local stripped = response:gsub("\r?\n$", "")
 
@@ -24,9 +26,13 @@ end
 
 --- Resolve the current line range of a tracked selection.
 ---
---- @param location PatchLocation
---- @return table range
+---@param location PatchLocation
+---@return table|nil range
 local function resolve_range(location)
+  if not vim.api.nvim_buf_is_valid(location.source_buf) then
+    return nil
+  end
+
   local position = vim.api.nvim_buf_get_extmark_by_id(
     location.source_buf,
     location.namespace,
@@ -34,28 +40,120 @@ local function resolve_range(location)
     { details = true }
   )
 
+  if #position == 0 or not position[3] or position[3].end_row == nil then
+    return nil
+  end
+
   return {
     start_row = position[1],
     end_row = position[3].end_row,
   }
 end
 
---- TODO: Map actions to options
---- TODO: Document this function 
---- Resolve a tracked selection and replace its current line range.
+--- Resolve the current generated line range of a proposal.
 ---
---- @param location PatchLocation
---- @param response string
---- @return PatchProposal
+---@param proposal PatchProposal
+---@return table|nil range
+local function resolve_generated_range(proposal)
+  if not proposal.generated_mark then
+    return nil
+  end
+
+  local source_buf = proposal.location.source_buf
+  if not vim.api.nvim_buf_is_valid(source_buf) then
+    return nil
+  end
+
+  local position = vim.api.nvim_buf_get_extmark_by_id(
+    source_buf,
+    namespace,
+    proposal.generated_mark,
+    { details = true }
+  )
+
+  if #position == 0 or not position[3] or position[3].end_row == nil then
+    return nil
+  end
+
+  return {
+    start_row = position[1],
+    end_row = position[3].end_row,
+  }
+end
+
+---@param proposal PatchProposal
+local function delete_preview_marks(proposal)
+  local source_buf = proposal.location.source_buf
+  if not vim.api.nvim_buf_is_valid(source_buf) then
+    return
+  end
+
+  if proposal.generated_mark then
+    vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.generated_mark)
+    proposal.generated_mark = nil
+  end
+
+  if proposal.actions_mark then
+    vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.actions_mark)
+    proposal.actions_mark = nil
+  end
+end
+
+--- Create the generated-range and action-line extmarks for a proposal.
+---
+---@param proposal PatchProposal
+---@param generated_start integer
+---@param original_end integer
+---@param line_count integer
+local function create_preview_marks(proposal, generated_start, original_end, line_count)
+  local source_buf = proposal.location.source_buf
+
+  if line_count > 0 then
+    proposal.generated_mark = vim.api.nvim_buf_set_extmark(
+      source_buf,
+      namespace,
+      generated_start,
+      0,
+      {
+        end_row = generated_start + line_count,
+        end_col = 0,
+        hl_group = "DiffAdd",
+        hl_eol = true,
+      }
+    )
+  end
+
+  local actions_row = line_count > 0
+      and generated_start + line_count - 1
+    or math.max(original_end - 1, 0)
+
+  proposal.actions_mark = vim.api.nvim_buf_set_extmark(
+    source_buf,
+    namespace,
+    actions_row,
+    0,
+    { virt_lines = { { { "[a] Accept   [r] Reject   [R] Retry", "Comment" } } } }
+  )
+end
+
+--- Insert a generated replacement after a tracked selection.
+---
+---@param location PatchLocation
+---@param response string
+---@return PatchProposal|nil proposal
 function M.apply(location, response)
   local range = resolve_range(location)
+  if not range then
+    return nil
+  end
+
   local lines = to_lines(response)
 
   vim.api.nvim_buf_set_lines(
     location.source_buf,
     range.end_row,
     range.end_row,
-    true,
+    false,
     lines
   )
 
@@ -75,166 +173,165 @@ function M.apply(location, response)
     }
   )
 
-  local patch_mark
-
-  if #lines > 0 then
-    patch_mark = vim.api.nvim_buf_set_extmark(
-      location.source_buf,
-      namespace,
-      range.end_row,
-      0,
-      {
-        end_row = range.end_row + #lines,
-        end_col = 0,
-        hl_group = "DiffAdd",
-        hl_eol = true,
-      }
-    )
-  end
-
-  local options_mark = vim.api.nvim_buf_set_extmark(
-    location.source_buf,
-    namespace,
-    range.end_row + #lines - 1,
-    0,
-    {
-      virt_lines = {
-        {
-          { "[a] Accept   [r] Reject   [R] Retry", "Comment" },
-        },
-      },
-    }
-  )
-
-  return {
+  local proposal = {
     location = location,
-    generated_mark = patch_mark,
-    actions_mark = options_mark,
-    status = "pending"
+    generated_mark = nil,
+    actions_mark = nil,
+    status = "pending",
   }
 
+  create_preview_marks(proposal, range.end_row, range.end_row, #lines)
+  return proposal
 end
 
+--- Replace a proposal's generated span with a new response.
+---
+---@param proposal PatchProposal
+---@param response string
+---@return PatchProposal|nil proposal
+---@return string|nil error_message
+function M.update(proposal, response)
+  local original_range = resolve_range(proposal.location)
+  if not original_range then
+    return nil, "patch: original selection no longer exists"
+  end
+
+  local generated_range = resolve_generated_range(proposal)
+  if proposal.generated_mark and not generated_range then
+    return nil, "patch: generated replacement no longer exists"
+  end
+
+  generated_range = generated_range or {
+    start_row = original_range.end_row,
+    end_row = original_range.end_row,
+  }
+
+  local lines = to_lines(response)
+  delete_preview_marks(proposal)
+
+  vim.api.nvim_buf_set_lines(
+    proposal.location.source_buf,
+    generated_range.start_row,
+    generated_range.end_row,
+    false,
+    lines
+  )
+
+  create_preview_marks(
+    proposal,
+    generated_range.start_row,
+    original_range.end_row,
+    #lines
+  )
+
+  return proposal
+end
+
+--- Accept a proposal by removing the original selected lines.
+---
+---@param proposal PatchProposal
+---@return boolean accepted
 function M.accept(proposal)
   if proposal.status ~= "pending" then
-    return
+    return false
   end
 
-  local location = proposal.location
-  local source_buf = location.source_buf
-  local range = resolve_range(location)
-
- -- delete location.extmark_id
-  vim.api.nvim_buf_del_extmark(
-    source_buf,
-    location.namespace,
-    location.extmark_id
-  )
-
-  -- clear generated replacement and action prompt extmarks
-  if proposal.generated_mark then
-    vim.api.nvim_buf_del_extmark(
-      source_buf,
-      namespace,
-      proposal.generated_mark
-    )
+  local range = resolve_range(proposal.location)
+  if not range then
+    return false
   end
 
-  -- remove action prompt extmark
+  proposal.status = "finished"
+  delete_preview_marks(proposal)
   vim.api.nvim_buf_del_extmark(
-    source_buf,
-    namespace,
-    proposal.actions_mark
+    proposal.location.source_buf,
+    proposal.location.namespace,
+    proposal.location.extmark_id
   )
 
-  -- remove original selected lines. replacement will take over.
   vim.api.nvim_buf_set_lines(
-    source_buf,
+    proposal.location.source_buf,
     range.start_row,
     range.end_row,
     false,
     {}
   )
 
-  proposal.status = "finished"
+  return true
 end
 
-local function resolve_generated_range(proposal)
-  if not proposal.generated_mark then
-    return
-  end
-
-  local position = vim.api.nvim_buf_get_extmark_by_id(
-    proposal.location.source_buf,
-    namespace,
-    proposal.generated_mark,
-    { details = true }
-  )
-
-  if #position == 0 then
-    return
-  end
-
-  return {
-    start_row = position[1],
-    end_row = position[3].end_row
-  }
-end
-
-
+--- Reject a proposal by removing its generated lines.
+---
+---@param proposal PatchProposal
+---@return boolean rejected
 function M.reject(proposal)
   if proposal.status ~= "pending" then
-    return
+    return false
   end
 
-  local location = proposal.location
-  local source_buf = location.source_buf
-  local gen_range = resolve_generated_range(proposal)
-
-  -- delete location.extmark_id
-  vim.api.nvim_buf_del_extmark(
-    source_buf,
-    location.namespace,
-    location.extmark_id
-  )
-
-  -- delete proposal.generated_mark
-  if proposal.generated_mark then
-    vim.api.nvim_buf_del_extmark(
-      source_buf,
-      namespace,
-      proposal.generated_mark
-    )
+  local generated_range = resolve_generated_range(proposal)
+  if proposal.generated_mark and not generated_range then
+    return false
   end
 
-  -- delete proposal.actions_mark
+  local source_buf = proposal.location.source_buf
+  if not vim.api.nvim_buf_is_valid(source_buf) then
+    return false
+  end
+
+  proposal.status = "finished"
+  delete_preview_marks(proposal)
   vim.api.nvim_buf_del_extmark(
     source_buf,
-    namespace,
-    proposal.actions_mark
+    proposal.location.namespace,
+    proposal.location.extmark_id
   )
 
-  if gen_range then
+  if generated_range then
     vim.api.nvim_buf_set_lines(
       source_buf,
-      gen_range.start_row,
-      gen_range.end_row,
+      generated_range.start_row,
+      generated_range.end_row,
       false,
       {}
     )
   end
 
-  proposal.status = "finished"
+  return true
 end
 
-function M.retry(proposal)
+--- Request another response and update a proposal in place.
+---
+---@param proposal PatchProposal
+---@param client table client exposing request(message, on_complete)
+---@param message string original prompt message
+---@return boolean started
+function M.retry(proposal, client, message)
   if proposal.status ~= "pending" then
-    return
+    return false
   end
 
-  -- ...
-
   proposal.status = "retrying"
+
+  client.request(message, function(res, err)
+    if proposal.status ~= "retrying" then
+      return
+    end
+
+    if err then
+      proposal.status = "pending"
+      return
+    end
+
+    local updated, update_error = M.update(proposal, res)
+    proposal.status = "pending"
+
+    if not updated then
+      vim.notify(tostring(update_error), vim.log.levels.ERROR)
+    end
+  end)
+
+  return true
 end
 
 return M

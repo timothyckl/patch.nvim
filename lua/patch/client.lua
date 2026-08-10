@@ -17,13 +17,13 @@ end
 --- Send a prompt to Pi and deliver its final assistant text.
 ---
 --- @param message string prompt containing the selection and surrounding context
---- @param on_result fun(replacement: string) receives the generated replacement
-function M.request(message, on_result)
+--- @param on_complete fun(res: string|nil, err: string|nil)
+function M.request(message, on_complete)
   local process
 
   local stdout_buffer = ""
   local assistant_text
-  local finished = false
+  local completed = false
 
   vim.api.nvim_echo({ { "Generating...", "Comment" } }, false, {})
 
@@ -34,6 +34,35 @@ function M.request(message, on_result)
     vim.schedule(function()
       print(message)
     end)
+  end
+
+  --- Complete this request exactly once on Neovim's main event loop.
+  ---
+  --- @param res string|nil
+  --- @param err string|nil
+  local function complete(res, err)
+    if completed then
+      return
+    end
+
+    completed = true
+
+    vim.schedule(function()
+      vim.api.nvim_echo({ { "" } }, false, {})
+      on_complete(res, err)
+    end)
+  end
+
+  --- Report a request failure and complete it.
+  ---
+  --- @param err string
+  local function fail(err)
+    if completed then
+      return
+    end
+
+    complete(nil, err)
+    display(err)
   end
 
   --- Join the text parts of an assistant message.
@@ -63,11 +92,13 @@ function M.request(message, on_result)
 
   --- Close the process input stream and clear its references.
   local function close_process()
-    if process then
-      process:write(nil)
-    end
+    local current_process = process
 
     clear_process()
+
+    if current_process then
+      pcall(current_process.write, current_process, nil)
+    end
   end
 
   --- Report an unexpected process failure and release the process.
@@ -76,8 +107,12 @@ function M.request(message, on_result)
   local function handle_exit(result)
     clear_process()
 
-    if result.code ~= 0 and not finished then
-      display("Pi exited with code " .. result.code)
+    if not completed then
+      if result.code ~= 0 then
+        fail("Pi exited with code " .. result.code)
+      else
+        fail("Pi exited before returning a response")
+      end
     end
   end
 
@@ -86,8 +121,7 @@ function M.request(message, on_result)
   --- @param record table
   local function handle_record(record)
     if record.type == "response" and record.command == "prompt" and not record.success then
-      finished = true
-      display("Pi rejected the prompt: " .. record.error)
+      fail("Pi rejected the prompt: " .. record.error)
       close_process()
       return
     end
@@ -98,20 +132,15 @@ function M.request(message, on_result)
     end
 
     if record.type == "agent_settled" then
-      finished = true
-
       local replacement = assistant_text
+
+      if replacement == nil then
+        fail("Pi returned no response")
+      else
+        complete(replacement, nil)
+      end
+
       close_process()
-
-      vim.schedule(function()
-        vim.api.nvim_echo({ { "" } }, false, {})
-
-        if replacement == nil then
-          print("Pi returned empty response.")
-        else
-          on_result(replacement)
-        end
-      end)
       return
     end
   end
@@ -122,7 +151,8 @@ function M.request(message, on_result)
   --- @param data string|nil
   local function handle_stdout(error_message, data)
     if error_message then
-      display("Failed to read Pi output: " .. error_message)
+      fail("Failed to read Pi output: " .. error_message)
+      close_process()
       return
     end
 
@@ -138,23 +168,44 @@ function M.request(message, on_result)
       stdout_buffer = stdout_buffer:sub(newline + 1)
 
       if line ~= "" then
-        handle_record(vim.json.decode(line))
+        local decoded, record = pcall(vim.json.decode, line)
+
+        if not decoded then
+          fail("Failed to decode Pi output: " .. record)
+          close_process()
+          return
+        end
+
+        handle_record(record)
       end
     end
   end
 
-  process = vim.system(
+  local started, process_or_error = pcall(vim.system,
     { "pi", "--mode", "rpc", "--system-prompt", SYSTEM_PROMPT, "--no-session", "--thinking", "off" },
     { stdin = true, stdout = handle_stdout },
     handle_exit
   )
 
+  if not started then
+    fail("Failed to start Pi: " .. tostring(process_or_error))
+    return
+  end
+
+  process = process_or_error
   active_process = process
 
-  process:write(vim.json.encode({
-    type = "prompt",
-    message = message,
-  }) .. "\n")
+  local sent, write_error = pcall(function()
+    process:write(vim.json.encode({
+      type = "prompt",
+      message = message,
+    }) .. "\n")
+  end)
+
+  if not sent then
+    fail("Failed to send prompt to Pi: " .. tostring(write_error))
+    close_process()
+  end
 end
 
 return M

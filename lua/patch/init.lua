@@ -20,14 +20,21 @@ function M.start()
   ui.open_input(function(instruction)
     local message = prompt.build(capture, instruction)
 
-    client.request(message, function(response)
-      local proposal = replacement.apply(capture.location, response)
+    client.request(message, function(res, err)
+      if err then
+        return
+      end
 
-      -- TODO: Map these to key bindings
+      local proposal = replacement.apply(capture.location, res)
+      if not proposal then
+        vim.notify("patch: selection no longer exists", vim.log.levels.ERROR)
+        return
+      end
+
+      -- TODO: Connect these actions to user input.
       -- replacement.accept(proposal)
       -- replacement.reject(proposal)
-      -- replacement.retry(proposal)
-
+      -- replacement.retry(proposal, client, message)
     end)
   end)
 end
