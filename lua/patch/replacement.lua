@@ -112,6 +112,7 @@ function M.apply(location, response)
     actions_mark = options_mark,
     status = "pending"
   }
+
 end
 
 function M.accept(proposal)
@@ -123,24 +124,7 @@ function M.accept(proposal)
   local source_buf = location.source_buf
   local range = resolve_range(location)
 
-  -- remove original selected lines. replacement will take over.
-  vim.api.nvim_buf_set_lines(
-    source_buf,
-    range.start_row,
-    range.end_row,
-    false,
-    {}
-  )
-
-  -- clear "patch" namespace
-  vim.api.nvim_buf_clear_namespace(
-    source_buf,
-    location.namespace,
-    range.start_row,
-    range.end_row
-  )
-
-  -- delete extmark tracking selected lines in "patch" namespace
+ -- delete location.extmark_id
   vim.api.nvim_buf_del_extmark(
     source_buf,
     location.namespace,
@@ -163,15 +147,82 @@ function M.accept(proposal)
     proposal.actions_mark
   )
 
+  -- remove original selected lines. replacement will take over.
+  vim.api.nvim_buf_set_lines(
+    source_buf,
+    range.start_row,
+    range.end_row,
+    false,
+    {}
+  )
+
   proposal.status = "finished"
 end
+
+local function resolve_generated_range(proposal)
+  if not proposal.generated_mark then
+    return
+  end
+
+  local position = vim.api.nvim_buf_get_extmark_by_id(
+    proposal.location.source_buf,
+    namespace,
+    proposal.generated_mark,
+    { details = true }
+  )
+
+  if #position == 0 then
+    return
+  end
+
+  return {
+    start_row = position[1],
+    end_row = position[3].end_row
+  }
+end
+
 
 function M.reject(proposal)
   if proposal.status ~= "pending" then
     return
   end
 
-  -- ...
+  local location = proposal.location
+  local source_buf = location.source_buf
+  local gen_range = resolve_generated_range(proposal)
+
+  -- delete location.extmark_id
+  vim.api.nvim_buf_del_extmark(
+    source_buf,
+    location.namespace,
+    location.extmark_id
+  )
+
+  -- delete proposal.generated_mark
+  if proposal.generated_mark then
+    vim.api.nvim_buf_del_extmark(
+      source_buf,
+      namespace,
+      proposal.generated_mark
+    )
+  end
+
+  -- delete proposal.actions_mark
+  vim.api.nvim_buf_del_extmark(
+    source_buf,
+    namespace,
+    proposal.actions_mark
+  )
+
+  if gen_range then
+    vim.api.nvim_buf_set_lines(
+      source_buf,
+      gen_range.start_row,
+      gen_range.end_row,
+      false,
+      {}
+    )
+  end
 
   proposal.status = "finished"
 end
