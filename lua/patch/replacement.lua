@@ -1,11 +1,11 @@
 local M = {}
+local notify = require("patch.notify")
 
 local namespace = vim.api.nvim_create_namespace("patch-replacement")
 
 ---@class PatchProposal
 ---@field location PatchLocation
 ---@field generated_mark integer|nil
----@field actions_mark integer|nil
 ---@field status "pending"|"retrying"|"finished"
 
 --- Convert model output into lines accepted by nvim_buf_set_lines.
@@ -82,7 +82,7 @@ local function resolve_generated_range(proposal)
 end
 
 ---@param proposal PatchProposal
-local function delete_preview_marks(proposal)
+local function delete_generated_mark(proposal)
   local source_buf = proposal.location.source_buf
   if not vim.api.nvim_buf_is_valid(source_buf) then
     return
@@ -92,20 +92,14 @@ local function delete_preview_marks(proposal)
     vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.generated_mark)
     proposal.generated_mark = nil
   end
-
-  if proposal.actions_mark then
-    vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.actions_mark)
-    proposal.actions_mark = nil
-  end
 end
 
---- Create the generated-range and action-line extmarks for a proposal.
+--- Create the generated-range extmark for a proposal.
 ---
 ---@param proposal PatchProposal
 ---@param generated_start integer
----@param original_end integer
 ---@param line_count integer
-local function create_preview_marks(proposal, generated_start, original_end, line_count)
+local function create_generated_mark(proposal, generated_start, line_count)
   local source_buf = proposal.location.source_buf
 
   if line_count > 0 then
@@ -122,18 +116,6 @@ local function create_preview_marks(proposal, generated_start, original_end, lin
       }
     )
   end
-
-  local actions_row = line_count > 0
-      and generated_start + line_count - 1
-    or math.max(original_end - 1, 0)
-
-  proposal.actions_mark = vim.api.nvim_buf_set_extmark(
-    source_buf,
-    namespace,
-    actions_row,
-    0,
-    { virt_lines = { { { "[a] Accept   [r] Reject   [R] Retry", "Comment" } } } }
-  )
 end
 
 --- Insert a generated replacement after a tracked selection.
@@ -176,11 +158,10 @@ function M.apply(location, response)
   local proposal = {
     location = location,
     generated_mark = nil,
-    actions_mark = nil,
     status = "pending",
   }
 
-  create_preview_marks(proposal, range.end_row, range.end_row, #lines)
+  create_generated_mark(proposal, range.end_row, #lines)
   return proposal
 end
 
@@ -207,7 +188,7 @@ function M.update(proposal, response)
   }
 
   local lines = to_lines(response)
-  delete_preview_marks(proposal)
+  delete_generated_mark(proposal)
 
   vim.api.nvim_buf_set_lines(
     proposal.location.source_buf,
@@ -217,12 +198,7 @@ function M.update(proposal, response)
     lines
   )
 
-  create_preview_marks(
-    proposal,
-    generated_range.start_row,
-    original_range.end_row,
-    #lines
-  )
+  create_generated_mark(proposal, generated_range.start_row, #lines)
 
   return proposal
 end
@@ -242,7 +218,7 @@ function M.accept(proposal)
   end
 
   proposal.status = "finished"
-  delete_preview_marks(proposal)
+  delete_generated_mark(proposal)
   vim.api.nvim_buf_del_extmark(
     proposal.location.source_buf,
     proposal.location.namespace,
@@ -280,7 +256,7 @@ function M.reject(proposal)
   end
 
   proposal.status = "finished"
-  delete_preview_marks(proposal)
+  delete_generated_mark(proposal)
   vim.api.nvim_buf_del_extmark(
     source_buf,
     proposal.location.namespace,
@@ -327,7 +303,7 @@ function M.retry(proposal, client, message)
     proposal.status = "pending"
 
     if not updated then
-      vim.notify(tostring(update_error), vim.log.levels.ERROR)
+      notify.send(tostring(update_error), vim.log.levels.ERROR)
     end
   end)
 

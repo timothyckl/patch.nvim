@@ -1,4 +1,5 @@
 local M = {}
+local notify = require("patch.notify")
 
 local SYSTEM_PROMPT = "You are an inline code editor. Given the selection and an instruction, reply with only the replacement code for the SELECTED region. No commentary, no explanations, no markdown fences."
 
@@ -8,9 +9,9 @@ local active_process = nil
 function M.cancel()
   if active_process then
     active_process:write(vim.json.encode({ type = "abort" }) .. "\n")
-    vim.api.nvim_echo({ { "Cancelled", "Comment" } }, false, {})
+    notify.send("patch: cancelled", vim.log.levels.INFO)
   else
-    vim.api.nvim_echo({ { "Nothing to cancel", "Comment" } }, false, {})
+    notify.send("patch: nothing to cancel", vim.log.levels.WARN)
   end
 end
 
@@ -25,14 +26,14 @@ function M.request(message, on_complete)
   local assistant_text
   local completed = false
 
-  vim.api.nvim_echo({ { "Generating...", "Comment" } }, false, {})
+  notify.send("patch: generating...", vim.log.levels.INFO)
 
   --- Schedule a message for display on Neovim's main event loop.
   ---
   --- @param message string
   local function display(message)
     vim.schedule(function()
-      print(message)
+      notify.send(message, vim.log.levels.ERROR)
     end)
   end
 
@@ -48,7 +49,6 @@ function M.request(message, on_complete)
     completed = true
 
     vim.schedule(function()
-      vim.api.nvim_echo({ { "" } }, false, {})
       on_complete(res, err)
     end)
   end

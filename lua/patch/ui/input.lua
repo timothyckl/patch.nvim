@@ -22,10 +22,6 @@ local popup_options = {
   }
 }
 
-local function handle_close()
-  print("Input closed!")
-end
-
 local function handle_update() end
 
 --- Open the instruction input and deliver its submitted value.
@@ -35,7 +31,6 @@ function M.open(on_submit)
   local input = Input(popup_options, {
     prompt = "> ",
     default_value = "",
-    on_close = handle_close,
     on_submit = on_submit,
     on_change = handle_update,
   })
