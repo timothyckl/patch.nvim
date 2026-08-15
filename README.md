@@ -57,4 +57,4 @@ npx @earendil-works/pi-ai login [provider]
 - [ ] Clean up undo behavior so undoing an accepted patch restores the original text like rejection does, without leaving or duplicating generated content.
 - [ ] Improve retry feedback by temporarily turning off the existing diff preview while a new replacement is being generated, then displaying the updated preview when the retry completes.
 - [ ] Expose the system prompt to users as a setup configuration option.
-- [ ] Show a notification when a replacement has finished generating and is ready for review.
+- [x] Show a notification when a replacement has finished generating and is ready for review.
