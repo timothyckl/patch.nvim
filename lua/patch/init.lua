@@ -69,6 +69,7 @@ function M.start()
 
       active_proposal = proposal
       active_message = message
+      notify.send("patch: complete", vim.log.levels.INFO)
     end)
   end)
 end

@@ -304,7 +304,10 @@ function M.retry(proposal, client, message)
 
     if not updated then
       notify.send(tostring(update_error), vim.log.levels.ERROR)
+      return
     end
+
+    notify.send("patch: complete", vim.log.levels.INFO)
   end)
 
   return true
