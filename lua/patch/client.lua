@@ -1,7 +1,17 @@
 local M = {}
 local notify = require("patch.notify")
 
-local SYSTEM_PROMPT = "You are an inline code editor. Given the selection and an instruction, reply with only the replacement code for the SELECTED region. No commentary, no explanations, no markdown fences."
+local DEFAULT_SYSTEM_PROMPT = "You are an inline code editor. Given the selection and an instruction, reply with only the replacement code for the SELECTED region. No commentary, no explanations, no markdown fences."
+local system_prompt = DEFAULT_SYSTEM_PROMPT
+
+---@class PatchClientOptions
+---@field system_prompt? string
+
+---@param opts? PatchClientOptions
+function M.setup(opts)
+  opts = opts or {}
+  system_prompt = opts.system_prompt or DEFAULT_SYSTEM_PROMPT
+end
 
 ---@class PatchRequest
 ---@field state "pending"|"cancelled"|"completed"
@@ -212,7 +222,7 @@ function M.request(message, on_complete)
   end
 
   local started, process_or_error = pcall(vim.system,
-    { "pi", "--mode", "rpc", "--system-prompt", SYSTEM_PROMPT, "--no-session", "--thinking", "off" },
+    { "pi", "--mode", "rpc", "--system-prompt", system_prompt, "--no-session", "--thinking", "off" },
     { stdin = true, stdout = handle_stdout },
     handle_exit
   )

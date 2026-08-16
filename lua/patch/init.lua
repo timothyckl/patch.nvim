@@ -13,11 +13,13 @@ local requesting = false
 
 ---@class PatchOptions
 ---@field notify? function|table notification provider compatible with vim.notify
+---@field system_prompt? string custom Pi system prompt
 
 ---@param opts? PatchOptions
 function M.setup(opts)
   opts = opts or {}
   notify.setup(opts.notify)
+  client.setup({ system_prompt = opts.system_prompt })
 end
 
 ---@param message string

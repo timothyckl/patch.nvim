@@ -37,6 +37,7 @@ npx @earendil-works/pi-ai login [provider]
   config = function()
     require("patch").setup({
       notify = require("notify"),
+      -- system_prompt = "Custom system instructions...",
     })
 
     vim.keymap.set("x", "<leader>p", "<Cmd>PatchCapture<CR>", { desc = "Capture selection and request a patch" })
@@ -48,6 +49,8 @@ npx @earendil-works/pi-ai login [provider]
 }
 ```
 
+`system_prompt` is optional. When set, it completely replaces Patch's built-in system prompt.
+
 ## To-do
 
 - [ ] Build codebase-relevant context separately from prompt construction.
@@ -56,5 +59,5 @@ npx @earendil-works/pi-ai login [provider]
 - [ ] Add a model-selection UI and mappable commands that let users choose or cycle the model used for Patch requests. By default, Patch uses Pi's primary model.
 - [x] Clean up undo behavior so undoing an accepted patch restores the original text like rejection does, without leaving or duplicating generated content.
 - [x] Improve retry feedback by temporarily turning off the existing diff preview while a new replacement is being generated, then displaying the updated preview when the retry completes.
-- [ ] Expose the system prompt to users as a setup configuration option.
+- [x] Expose the system prompt to users as a setup configuration option.
 - [x] Show a notification when a replacement has finished generating and is ready for review.
