@@ -118,9 +118,14 @@ function M.retry()
     return
   end
 
-  local request = replacement.retry(active_proposal, client, active_message, function(settled_request)
+  local retried_proposal = active_proposal
+  local request = replacement.retry(retried_proposal, client, active_message, function(settled_request)
     if active_request == settled_request then
       active_request = nil
+    end
+
+    if active_proposal == retried_proposal and retried_proposal.status == "finished" then
+      clear_active_patch()
     end
   end)
 

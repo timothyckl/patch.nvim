@@ -61,6 +61,22 @@ local function render_preview(proposal)
   end
 
   local source_buf = proposal.location.source_buf
+  vim.api.nvim_buf_set_extmark(
+    source_buf,
+    proposal.location.namespace,
+    range.start_row,
+    0,
+    {
+      id = proposal.location.extmark_id,
+      end_row = range.end_row,
+      end_col = 0,
+      right_gravity = true,
+      end_right_gravity = false,
+      hl_group = "DiffDelete",
+      hl_eol = true,
+    }
+  )
+
   if #proposal.generated_lines == 0 then
     if proposal.generated_mark then
       vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.generated_mark)
@@ -106,10 +122,47 @@ vim.api.nvim_create_autocmd("VimResized", {
   group = group,
   callback = function()
     for _, proposal in pairs(previews) do
-      render_preview(proposal)
+      if proposal.status == "pending" then
+        render_preview(proposal)
+      end
     end
   end,
 })
+
+--- Remove a proposal's decorations while retaining its tracked selection.
+---
+---@param proposal PatchProposal
+---@return boolean hidden
+local function hide_preview(proposal)
+  local range = resolve_range(proposal.location)
+  if not range then
+    return false
+  end
+
+  local source_buf = proposal.location.source_buf
+
+  if proposal.generated_mark then
+    vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.generated_mark)
+    proposal.generated_mark = nil
+  end
+
+  vim.api.nvim_buf_set_extmark(
+    source_buf,
+    proposal.location.namespace,
+    range.start_row,
+    0,
+    {
+      id = proposal.location.extmark_id,
+      end_row = range.end_row,
+      end_col = 0,
+      right_gravity = true,
+      end_right_gravity = false,
+    }
+  )
+
+  proposal.generated_lines = {}
+  return true
+end
 
 ---@param proposal PatchProposal
 local function clear_preview(proposal)
@@ -143,22 +196,6 @@ function M.apply(location, response)
   if not range then
     return nil
   end
-
-  vim.api.nvim_buf_set_extmark(
-    location.source_buf,
-    location.namespace,
-    range.start_row,
-    0,
-    {
-      id = location.extmark_id,
-      end_row = range.end_row,
-      end_col = 0,
-      right_gravity = true,
-      end_right_gravity = false,
-      hl_group = "DiffDelete",
-      hl_eol = true,
-    }
-  )
 
   local proposal = {
     location = location,
@@ -249,6 +286,10 @@ function M.retry(proposal, client, message, on_settled)
     return nil
   end
 
+  if not hide_preview(proposal) then
+    return nil
+  end
+
   proposal.status = "retrying"
 
   local request
@@ -266,20 +307,23 @@ function M.retry(proposal, client, message, on_settled)
     end
 
     if err then
-      proposal.status = "pending"
+      proposal.status = "finished"
+      clear_preview(proposal)
       settle()
       return
     end
 
     local updated, update_error = M.update(proposal, res)
-    proposal.status = "pending"
 
     if not updated then
+      proposal.status = "finished"
+      clear_preview(proposal)
       notify.send(tostring(update_error), vim.log.levels.ERROR)
       settle()
       return
     end
 
+    proposal.status = "pending"
     notify.send("patch: complete", vim.log.levels.INFO)
     settle()
   end)
