@@ -8,6 +8,7 @@ local notify = require("patch.notify")
 local M = {}
 local active_proposal = nil
 local active_message = nil
+local active_request = nil
 local requesting = false
 
 ---@class PatchOptions
@@ -54,10 +55,17 @@ function M.start()
     local message = prompt.build(capture, instruction)
     requesting = true
 
-    client.request(message, function(res, err)
+    local request
+    request = client.request(message, function(res, err)
+      if active_request ~= request then
+        return
+      end
+
+      active_request = nil
       requesting = false
 
       if err then
+        selection.clear(capture.location)
         return
       end
 
@@ -71,6 +79,7 @@ function M.start()
       active_message = message
       notify.send("patch: complete", vim.log.levels.INFO)
     end)
+    active_request = request
   end)
 end
 
@@ -109,14 +118,28 @@ function M.retry()
     return
   end
 
-  if not replacement.retry(active_proposal, client, active_message) then
+  local request = replacement.retry(active_proposal, client, active_message, function(settled_request)
+    if active_request == settled_request then
+      active_request = nil
+    end
+  end)
+
+  if not request then
     warn("the active proposal cannot be retried")
+    return
   end
+
+  active_request = request
 end
 
 --- Cancel the active replacement request, if one exists.
 function M.cancel()
-  client.cancel()
+  if not active_request or not client.cancel(active_request) then
+    warn("nothing to cancel")
+    return
+  end
+
+  notify.send("patch: cancelled", vim.log.levels.INFO)
 end
 
 return M

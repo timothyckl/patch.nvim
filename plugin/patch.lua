@@ -16,8 +16,6 @@ vim.api.nvim_create_user_command("PatchRetry", patch.retry, {
   desc = "Retry the active replacement proposal",
 })
 
---- NOTE: Cancelling still occurs globally. Need to revisit this.
----       For now, assume patches cannot be cancelled mid-flight.
 vim.api.nvim_create_user_command("PatchCancel", patch.cancel, {
   desc = "Cancel the active replacement request",
 })

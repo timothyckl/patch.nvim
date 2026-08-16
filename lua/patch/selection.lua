@@ -83,4 +83,17 @@ function M.capture()
   }
 end
 
+--- Remove a tracked selection.
+---
+--- @param location PatchLocation
+function M.clear(location)
+  if vim.api.nvim_buf_is_valid(location.source_buf) then
+    vim.api.nvim_buf_del_extmark(
+      location.source_buf,
+      location.namespace,
+      location.extmark_id
+    )
+  end
+end
+
 return M

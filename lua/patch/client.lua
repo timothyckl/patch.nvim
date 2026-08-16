@@ -3,28 +3,51 @@ local notify = require("patch.notify")
 
 local SYSTEM_PROMPT = "You are an inline code editor. Given the selection and an instruction, reply with only the replacement code for the SELECTED region. No commentary, no explanations, no markdown fences."
 
-local active_process = nil
+---@class PatchRequest
+---@field state "pending"|"cancelled"|"completed"
+---@field process? vim.SystemObj
+---@field on_complete fun(res: string|nil, err: string|nil)
 
---- Abort the active Pi request, if one exists.
-function M.cancel()
-  if active_process then
-    active_process:write(vim.json.encode({ type = "abort" }) .. "\n")
-    notify.send("patch: cancelled", vim.log.levels.INFO)
-  else
-    notify.send("patch: nothing to cancel", vim.log.levels.WARN)
+--- Abort a Pi request.
+---
+---@param request PatchRequest
+---@return boolean cancelled
+function M.cancel(request)
+  if request.state ~= "pending" then
+    return false
   end
+
+  request.state = "cancelled"
+
+  if request.process then
+    pcall(
+      request.process.write,
+      request.process,
+      vim.json.encode({ type = "abort" }) .. "\n"
+    )
+  end
+
+  vim.schedule(function()
+    request.on_complete(nil, "cancelled")
+  end)
+
+  return true
 end
 
 --- Send a prompt to Pi and deliver its final assistant text.
 ---
 --- @param message string prompt containing the selection and surrounding context
 --- @param on_complete fun(res: string|nil, err: string|nil)
+--- @return PatchRequest request
 function M.request(message, on_complete)
-  local process
+  local request = {
+    state = "pending",
+    process = nil,
+    on_complete = on_complete,
+  }
 
   local stdout_buffer = ""
   local assistant_text
-  local completed = false
 
   notify.send("patch: generating...", vim.log.levels.INFO)
 
@@ -42,14 +65,14 @@ function M.request(message, on_complete)
   --- @param res string|nil
   --- @param err string|nil
   local function complete(res, err)
-    if completed then
+    if request.state ~= "pending" then
       return
     end
 
-    completed = true
+    request.state = "completed"
 
     vim.schedule(function()
-      on_complete(res, err)
+      request.on_complete(res, err)
     end)
   end
 
@@ -57,7 +80,7 @@ function M.request(message, on_complete)
   ---
   --- @param err string
   local function fail(err)
-    if completed then
+    if request.state ~= "pending" then
       return
     end
 
@@ -83,16 +106,12 @@ function M.request(message, on_complete)
 
   --- Clear references to this request's process.
   local function clear_process()
-    if active_process == process then
-      active_process = nil
-    end
-
-    process = nil
+    request.process = nil
   end
 
   --- Close the process input stream and clear its references.
   local function close_process()
-    local current_process = process
+    local current_process = request.process
 
     clear_process()
 
@@ -107,7 +126,7 @@ function M.request(message, on_complete)
   local function handle_exit(result)
     clear_process()
 
-    if not completed then
+    if request.state == "pending" then
       if result.code ~= 0 then
         fail("Pi exited with code " .. result.code)
       else
@@ -120,6 +139,14 @@ function M.request(message, on_complete)
   ---
   --- @param record table
   local function handle_record(record)
+    if request.state == "cancelled" then
+      if record.type == "agent_settled" then
+        close_process()
+      end
+
+      return
+    end
+
     if record.type == "response" and record.command == "prompt" and not record.success then
       fail("Pi rejected the prompt: " .. record.error)
       close_process()
@@ -151,7 +178,10 @@ function M.request(message, on_complete)
   --- @param data string|nil
   local function handle_stdout(error_message, data)
     if error_message then
-      fail("Failed to read Pi output: " .. error_message)
+      if request.state == "pending" then
+        fail("Failed to read Pi output: " .. error_message)
+      end
+
       close_process()
       return
     end
@@ -189,14 +219,13 @@ function M.request(message, on_complete)
 
   if not started then
     fail("Failed to start Pi: " .. tostring(process_or_error))
-    return
+    return request
   end
 
-  process = process_or_error
-  active_process = process
+  request.process = process_or_error
 
   local sent, write_error = pcall(function()
-    process:write(vim.json.encode({
+    request.process:write(vim.json.encode({
       type = "prompt",
       message = message,
     }) .. "\n")
@@ -206,6 +235,8 @@ function M.request(message, on_complete)
     fail("Failed to send prompt to Pi: " .. tostring(write_error))
     close_process()
   end
+
+  return request
 end
 
 return M

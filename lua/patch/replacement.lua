@@ -242,21 +242,32 @@ end
 ---@param proposal PatchProposal
 ---@param client table client exposing request(message, on_complete)
 ---@param message string original prompt message
----@return boolean started
-function M.retry(proposal, client, message)
+---@param on_settled? fun(request: PatchRequest)
+---@return PatchRequest|nil request
+function M.retry(proposal, client, message, on_settled)
   if proposal.status ~= "pending" then
-    return false
+    return nil
   end
 
   proposal.status = "retrying"
 
-  client.request(message, function(res, err)
+  local request
+
+  local function settle()
+    if on_settled then
+      on_settled(request)
+    end
+  end
+
+  request = client.request(message, function(res, err)
     if proposal.status ~= "retrying" then
+      settle()
       return
     end
 
     if err then
       proposal.status = "pending"
+      settle()
       return
     end
 
@@ -265,13 +276,15 @@ function M.retry(proposal, client, message)
 
     if not updated then
       notify.send(tostring(update_error), vim.log.levels.ERROR)
+      settle()
       return
     end
 
     notify.send("patch: complete", vim.log.levels.INFO)
+    settle()
   end)
 
-  return true
+  return request
 end
 
 return M
