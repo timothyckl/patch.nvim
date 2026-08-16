@@ -51,7 +51,7 @@ npx @earendil-works/pi-ai login [provider]
 ## To-do
 
 - [ ] Build codebase-relevant context separately from prompt construction.
-- [ ] Reject empty or whitespace-only instructions before starting generation.
+- [x] Reject empty or whitespace-only instructions before starting generation.
 - [x] Make cancellation request-scoped instead of global.
 - [ ] Add a model-selection UI and mappable commands that let users choose or cycle the model used for Patch requests. By default, Patch uses Pi's primary model.
 - [x] Clean up undo behavior so undoing an accepted patch restores the original text like rejection does, without leaving or duplicating generated content.

@@ -1,6 +1,7 @@
 local M = {}
 
 local Input = require("nui.input")
+local PROMPT = "> "
 
 local popup_options = {
   relative = "cursor",
@@ -22,18 +23,29 @@ local popup_options = {
   }
 }
 
-local function handle_update() end
+---@param input NuiInput
+---@return string key
+local function submit_key(input)
+  local line = vim.api.nvim_buf_get_lines(input.bufnr, 0, 1, false)[1] or ""
+  local instruction = line:sub(#PROMPT + 1)
+  return instruction:find("%S") and "\r" or ""
+end
 
 --- Open the instruction input and deliver its submitted value.
 ---
 --- @param on_submit fun(instruction: string)
 function M.open(on_submit)
   local input = Input(popup_options, {
-    prompt = "> ",
+    prompt = PROMPT,
     default_value = "",
     on_submit = on_submit,
-    on_change = handle_update,
   })
+
+  for _, mode in ipairs({ "i", "n" }) do
+    input:map(mode, "<CR>", function()
+      return submit_key(input)
+    end, { expr = true, noremap = true })
+  end
 
   -- unmount input by pressing `<Esc>` in normal mode
   input:map("n", "<Esc>", function()
