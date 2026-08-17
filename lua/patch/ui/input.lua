@@ -33,15 +33,10 @@ end
 
 --- Open the instruction input and deliver its submitted value.
 ---
---- @param model string
 --- @param on_submit fun(instruction: string)
 --- @param on_close fun()
-function M.open(model, on_submit, on_close)
-  local options = vim.deepcopy(popup_options)
-  options.border.text.bottom = { { " " .. model .. " ", "Comment" } }
-  options.border.text.bottom_align = "right"
-
-  local input = Input(options, {
+function M.open(on_submit, on_close)
+  local input = Input(vim.deepcopy(popup_options), {
     prompt = PROMPT,
     default_value = "",
     on_submit = on_submit,

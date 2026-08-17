@@ -53,11 +53,11 @@ npx @earendil-works/pi-ai login [provider]
 
 `system_prompt` is optional. When set, it completely replaces Patch's built-in system prompt.
 
-`model` is optional. When omitted, Patch uses Pi's primary model. A model selected from `PatchMenu` overrides the configured model for the current Neovim session.
+`model` is optional. When omitted, Patch uses Pi's primary model. `PatchMenu` marks the effective model and allows selecting an override for the current Neovim session.
 
 ## To-do
 
-- [ ] Build codebase-relevant context separately from prompt construction.
+- [ ] Add codebase-relevant context gathering on top of the separate buffer-context and prompt-construction stages.
 - [x] Reject empty or whitespace-only instructions before starting generation.
 - [x] Make cancellation request-scoped instead of global.
 - [x] Add a model-selection UI for choosing the model used by Patch requests, with optional configuration and Pi's primary model as the default.

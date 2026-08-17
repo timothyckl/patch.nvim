@@ -1,15 +1,23 @@
 local prompt = require("patch.prompt")
 local selection = require("patch.selection")
+local context = require("patch.context")
 local client = require("patch.client")
 local replacement = require("patch.replacement")
 local ui = require("patch.ui")
 local notify = require("patch.notify")
 
 local M = {}
-local active_proposal = nil
-local active_message = nil
-local active_request = nil
-local active_capture = nil
+
+---@class PatchWorkflow
+---@field phase "input"|"generating"|"reviewing"|"retrying"
+---@field location PatchLocation
+---@field content? PatchContent
+---@field message? string
+---@field request? PatchRequest
+---@field proposal? PatchProposal
+
+---@type PatchWorkflow|nil
+local active_workflow
 
 ---@class PatchOptions
 ---@field notify? function|table notification provider compatible with vim.notify
@@ -31,133 +39,168 @@ local function warn(message)
   notify.send("patch: " .. message, vim.log.levels.WARN)
 end
 
+---@param message string
+local function report_error(message)
+  notify.send("patch: " .. message, vim.log.levels.ERROR)
+end
+
+---@param message string
+local function report_info(message)
+  notify.send("patch: " .. message, vim.log.levels.INFO)
+end
+
+---@param err string|nil
+local function report_request_error(err)
+  if err and err ~= "cancelled" then
+    report_error(err)
+  end
+end
+
 --- Open a menu containing the models available to Pi.
 function M.open_menu()
-  if active_capture then
+  if active_workflow and active_workflow.phase == "input" then
     warn("submit or close the active instruction first")
     return
   end
 
-  client.get_available_models(function(models, err)
-    if active_capture then
+  client.resolve_model(function(selected_model, model_error)
+    if active_workflow and active_workflow.phase == "input" then
       warn("submit or close the active instruction first")
       return
     end
 
-    if err then
-      notify.send("patch: " .. err, vim.log.levels.ERROR)
+    if model_error then
+      report_error(model_error)
       return
     end
 
-    if not models or #models == 0 then
-      notify.send("patch: Pi reported no available models", vim.log.levels.WARN)
-      return
-    end
+    client.get_available_models(function(models, err)
+      if active_workflow and active_workflow.phase == "input" then
+        warn("submit or close the active instruction first")
+        return
+      end
 
-    ui.open_menu(models, function(model)
-      local selected_model = client.select_model(model)
-      notify.send("patch: using " .. selected_model, vim.log.levels.INFO)
+      if err then
+        report_error(err)
+        return
+      end
+
+      if not models or #models == 0 then
+        warn("Pi reported no available models")
+        return
+      end
+
+      ui.open_menu(models, selected_model, function(model)
+        local selected = client.select_model(model)
+        report_info("using " .. selected)
+      end)
     end)
   end)
 end
 
-local function clear_active_patch()
-  active_proposal = nil
-  active_message = nil
+---@return boolean blocked
+local function block_start_for_active_workflow()
+  if not active_workflow then
+    return false
+  end
+
+  if active_workflow.phase == "input" then
+    warn("submit or close the active instruction first")
+  elseif active_workflow.phase == "reviewing" then
+    warn("accept or reject the active proposal first")
+  else
+    warn("a replacement is already being generated")
+  end
+
+  return true
 end
 
--- TODO: If the submitted instruction is empty or whitespace-only, halt without starting generation.
---       See lua/patch/ui/
---- Capture a visual selection, request a replacement, and apply it to the tracked range.
+--- Capture a visual selection, request a replacement, and preview it at the tracked range.
 function M.start()
-  if active_capture then
-    warn("submit or close the active instruction first")
+  if block_start_for_active_workflow() then
     return
   end
 
-  if active_request then
-    warn("a replacement is already being generated")
-    return
-  end
-
-  if active_proposal then
-    warn("accept or reject the active proposal first")
-    return
-  end
-
-  local capture = selection.capture()
-
-  if not capture then
+  local location = selection.capture()
+  if not location then
     warn("no selection found")
     return
   end
 
-  active_capture = capture
+  local content = context.capture(location)
+  if not content then
+    selection.clear(location)
+    warn("no selection found")
+    return
+  end
 
-  client.resolve_model(function(model, model_error)
-    if active_capture ~= capture then
+  local workflow = {
+    phase = "input",
+    location = location,
+    content = content,
+  }
+  active_workflow = workflow
+
+  ui.open_input(function(instruction)
+    if active_workflow ~= workflow or workflow.phase ~= "input" then
       return
     end
 
-    if model_error then
-      active_capture = nil
-      selection.clear(capture.location)
-      notify.send("patch: " .. model_error, vim.log.levels.ERROR)
-      return
-    end
+    workflow.message = prompt.build(workflow.content, instruction)
+    workflow.content = nil
+    workflow.phase = "generating"
+    report_info("generating...")
 
-    ui.open_input(model, function(instruction)
-      if active_capture ~= capture then
+    local request
+    request = client.request(workflow.message, function(response, err)
+      if active_workflow ~= workflow
+          or workflow.phase ~= "generating"
+          or workflow.request ~= request then
         return
       end
 
-      active_capture = nil
-      local message = prompt.build(capture, instruction)
+      workflow.request = nil
 
-      local request
-      request = client.request(message, function(res, err)
-        if active_request ~= request then
-          return
-        end
-
-        active_request = nil
-
-        if err then
-          selection.clear(capture.location)
-          return
-        end
-
-        local proposal = replacement.apply(capture.location, res)
-        if not proposal then
-          notify.send("patch: selection no longer exists", vim.log.levels.ERROR)
-          return
-        end
-
-        active_proposal = proposal
-        active_message = message
-        notify.send("patch: complete", vim.log.levels.INFO)
-      end)
-      active_request = request
-    end, function()
-      if active_capture ~= capture then
+      if err then
+        active_workflow = nil
+        selection.clear(workflow.location)
+        report_request_error(err)
         return
       end
 
-      active_capture = nil
-      selection.clear(capture.location)
+      local proposal = replacement.apply(workflow.location, response)
+      if not proposal then
+        active_workflow = nil
+        selection.clear(workflow.location)
+        report_error("selection no longer exists")
+        return
+      end
+
+      workflow.phase = "reviewing"
+      workflow.proposal = proposal
+      report_info("complete")
     end)
+    workflow.request = request
+  end, function()
+    if active_workflow ~= workflow or workflow.phase ~= "input" then
+      return
+    end
+
+    active_workflow = nil
+    selection.clear(workflow.location)
   end)
 end
 
 --- Accept the active replacement proposal.
 function M.accept()
-  if not active_proposal then
+  local workflow = active_workflow
+  if not workflow or not workflow.proposal then
     warn("no active proposal to accept")
     return
   end
 
-  if replacement.accept(active_proposal) then
-    clear_active_patch()
+  if replacement.accept(workflow.proposal) then
+    active_workflow = nil
   else
     warn("the active proposal cannot be accepted")
   end
@@ -165,13 +208,14 @@ end
 
 --- Reject the active replacement proposal.
 function M.reject()
-  if not active_proposal then
+  local workflow = active_workflow
+  if not workflow or not workflow.proposal then
     warn("no active proposal to reject")
     return
   end
 
-  if replacement.reject(active_proposal) then
-    clear_active_patch()
+  if replacement.reject(workflow.proposal) then
+    active_workflow = nil
   else
     warn("the active proposal cannot be rejected")
   end
@@ -179,38 +223,60 @@ end
 
 --- Request another replacement for the active proposal.
 function M.retry()
-  if not active_proposal or not active_message then
+  local workflow = active_workflow
+  if not workflow or not workflow.proposal or not workflow.message then
     warn("no active proposal to retry")
     return
   end
 
-  local retried_proposal = active_proposal
-  local request = replacement.retry(retried_proposal, client, active_message, function(settled_request)
-    if active_request == settled_request then
-      active_request = nil
-    end
-
-    if active_proposal == retried_proposal and retried_proposal.status == "finished" then
-      clear_active_patch()
-    end
-  end)
-
-  if not request then
+  if not replacement.begin_retry(workflow.proposal) then
     warn("the active proposal cannot be retried")
     return
   end
 
-  active_request = request
+  workflow.phase = "retrying"
+  report_info("generating...")
+
+  local request
+  request = client.request(workflow.message, function(response, err)
+    if active_workflow ~= workflow
+        or workflow.phase ~= "retrying"
+        or workflow.request ~= request then
+      return
+    end
+
+    workflow.request = nil
+
+    if err then
+      replacement.abort_retry(workflow.proposal)
+      active_workflow = nil
+      report_request_error(err)
+      return
+    end
+
+    local updated, update_error = replacement.complete_retry(workflow.proposal, response)
+    if not updated then
+      replacement.abort_retry(workflow.proposal)
+      active_workflow = nil
+      report_error(tostring(update_error))
+      return
+    end
+
+    workflow.phase = "reviewing"
+    report_info("complete")
+  end)
+  workflow.request = request
 end
 
 --- Cancel the active replacement request, if one exists.
 function M.cancel()
-  if not active_request or not client.cancel(active_request) then
+  local workflow = active_workflow
+  if not workflow or not workflow.request or not client.cancel(workflow.request) then
     warn("nothing to cancel")
     return
   end
 
-  notify.send("patch: cancelled", vim.log.levels.INFO)
+  report_info("cancelled")
 end
 
 return M

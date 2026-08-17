@@ -10,26 +10,26 @@ local function format_group(name, lines)
   return string.format("--- %s ---\n%s", name, contents)
 end
 
---- Format captured buffer context for display or inclusion in a prompt.
+--- Format buffer context for display or inclusion in a prompt.
 ---
---- @param capture PatchCapture captured buffer context
---- @return string formatted_capture
-function M.format_capture(capture)
+--- @param content PatchContent captured buffer context
+--- @return string formatted_context
+function M.format_context(content)
   return table.concat({
-    format_group("BEFORE", capture.content.before),
-    format_group("SELECTED", capture.content.selected),
-    format_group("AFTER", capture.content.after),
+    format_group("BEFORE", content.before),
+    format_group("SELECTED", content.selected),
+    format_group("AFTER", content.after),
   }, "\n")
 end
 
 --- Build a model prompt from captured buffer context and the user's instruction.
 ---
---- @param capture PatchCapture captured buffer context
+--- @param content PatchContent captured buffer context
 --- @param instruction string requested transformation
 --- @return string message
-function M.build(capture, instruction)
+function M.build(content, instruction)
   return table.concat({
-    M.format_capture(capture),
+    M.format_context(content),
     string.format("--- INSTRUCTION ---\n%s", instruction),
   }, "\n")
 end

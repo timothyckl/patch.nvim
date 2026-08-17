@@ -1,5 +1,5 @@
 local M = {}
-local notify = require("patch.notify")
+local selection = require("patch.selection")
 
 local namespace = vim.api.nvim_create_namespace("patch-replacement")
 local previews = {}
@@ -26,56 +26,21 @@ local function to_lines(response)
   return vim.split(stripped, "\n", { plain = true })
 end
 
---- Resolve the current line range of a tracked selection.
----
----@param location PatchLocation
----@return table|nil range
-local function resolve_range(location)
-  if not vim.api.nvim_buf_is_valid(location.source_buf) then
-    return nil
-  end
-
-  local position = vim.api.nvim_buf_get_extmark_by_id(
-    location.source_buf,
-    location.namespace,
-    location.extmark_id,
-    { details = true }
-  )
-
-  if #position == 0 or not position[3] or position[3].end_row == nil then
-    return nil
-  end
-
-  return {
-    start_row = position[1],
-    end_row = position[3].end_row,
-  }
-end
-
 ---@param proposal PatchProposal
 ---@return boolean rendered
 local function render_preview(proposal)
-  local range = resolve_range(proposal.location)
+  local range = selection.resolve(proposal.location)
   if not range then
     return false
   end
 
-  local source_buf = proposal.location.source_buf
-  vim.api.nvim_buf_set_extmark(
-    source_buf,
-    proposal.location.namespace,
-    range.start_row,
-    0,
-    {
-      id = proposal.location.extmark_id,
-      end_row = range.end_row,
-      end_col = 0,
-      right_gravity = true,
-      end_right_gravity = false,
-      hl_group = "DiffDelete",
-      hl_eol = true,
-    }
-  )
+  local source_buf = range.source_buf
+  if not selection.decorate(proposal.location, {
+    hl_group = "DiffDelete",
+    hl_eol = true,
+  }) then
+    return false
+  end
 
   if #proposal.generated_lines == 0 then
     if proposal.generated_mark then
@@ -134,31 +99,21 @@ vim.api.nvim_create_autocmd("VimResized", {
 ---@param proposal PatchProposal
 ---@return boolean hidden
 local function hide_preview(proposal)
-  local range = resolve_range(proposal.location)
+  local range = selection.resolve(proposal.location)
   if not range then
     return false
   end
 
-  local source_buf = proposal.location.source_buf
+  local source_buf = range.source_buf
 
   if proposal.generated_mark then
     vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.generated_mark)
     proposal.generated_mark = nil
   end
 
-  vim.api.nvim_buf_set_extmark(
-    source_buf,
-    proposal.location.namespace,
-    range.start_row,
-    0,
-    {
-      id = proposal.location.extmark_id,
-      end_row = range.end_row,
-      end_col = 0,
-      right_gravity = true,
-      end_right_gravity = false,
-    }
-  )
+  if not selection.decorate(proposal.location) then
+    return false
+  end
 
   proposal.generated_lines = {}
   return true
@@ -178,11 +133,7 @@ local function clear_preview(proposal)
       proposal.generated_mark = nil
     end
 
-    vim.api.nvim_buf_del_extmark(
-      source_buf,
-      proposal.location.namespace,
-      proposal.location.extmark_id
-    )
+    selection.clear(proposal.location)
   end
 end
 
@@ -192,7 +143,7 @@ end
 ---@param response string
 ---@return PatchProposal|nil proposal
 function M.apply(location, response)
-  local range = resolve_range(location)
+  local range = selection.resolve(location)
   if not range then
     return nil
   end
@@ -205,7 +156,11 @@ function M.apply(location, response)
   }
 
   previews[location.source_buf] = proposal
-  render_preview(proposal)
+  if not render_preview(proposal) then
+    previews[location.source_buf] = nil
+    return nil
+  end
+
   return proposal
 end
 
@@ -216,13 +171,16 @@ end
 ---@return PatchProposal|nil proposal
 ---@return string|nil error_message
 function M.update(proposal, response)
-  local original_range = resolve_range(proposal.location)
+  local original_range = selection.resolve(proposal.location)
   if not original_range then
-    return nil, "patch: original selection no longer exists"
+    return nil, "original selection no longer exists"
   end
 
   proposal.generated_lines = to_lines(response)
-  render_preview(proposal)
+  if not render_preview(proposal) then
+    return nil, "original selection no longer exists"
+  end
+
   return proposal
 end
 
@@ -235,7 +193,7 @@ function M.accept(proposal)
     return false
   end
 
-  local range = resolve_range(proposal.location)
+  local range = selection.resolve(proposal.location)
   if not range then
     return false
   end
@@ -274,61 +232,55 @@ function M.reject(proposal)
   return true
 end
 
---- Request another response and update a proposal in place.
+--- Hide a proposal while another response is requested.
 ---
 ---@param proposal PatchProposal
----@param client table client exposing request(message, on_complete)
----@param message string original prompt message
----@param on_settled? fun(request: PatchRequest)
----@return PatchRequest|nil request
-function M.retry(proposal, client, message, on_settled)
+---@return boolean started
+function M.begin_retry(proposal)
   if proposal.status ~= "pending" then
-    return nil
+    return false
   end
 
   if not hide_preview(proposal) then
-    return nil
+    return false
   end
 
   proposal.status = "retrying"
+  return true
+end
 
-  local request
-
-  local function settle()
-    if on_settled then
-      on_settled(request)
-    end
+--- Render a successful retry response.
+---
+---@param proposal PatchProposal
+---@param response string
+---@return PatchProposal|nil proposal
+---@return string|nil error_message
+function M.complete_retry(proposal, response)
+  if proposal.status ~= "retrying" then
+    return nil, "proposal is not being retried"
   end
 
-  request = client.request(message, function(res, err)
-    if proposal.status ~= "retrying" then
-      settle()
-      return
-    end
+  local updated, update_error = M.update(proposal, response)
+  if not updated then
+    return nil, update_error
+  end
 
-    if err then
-      proposal.status = "finished"
-      clear_preview(proposal)
-      settle()
-      return
-    end
+  proposal.status = "pending"
+  return proposal
+end
 
-    local updated, update_error = M.update(proposal, res)
+--- Remove a proposal whose retry did not complete.
+---
+---@param proposal PatchProposal
+---@return boolean aborted
+function M.abort_retry(proposal)
+  if proposal.status ~= "retrying" then
+    return false
+  end
 
-    if not updated then
-      proposal.status = "finished"
-      clear_preview(proposal)
-      notify.send(tostring(update_error), vim.log.levels.ERROR)
-      settle()
-      return
-    end
-
-    proposal.status = "pending"
-    notify.send("patch: complete", vim.log.levels.INFO)
-    settle()
-  end)
-
-  return request
+  proposal.status = "finished"
+  clear_preview(proposal)
+  return true
 end
 
 return M

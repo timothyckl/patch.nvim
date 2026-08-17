@@ -4,17 +4,12 @@ local namespace = vim.api.nvim_create_namespace("patch")
 
 --- @class PatchLocation
 --- @field source_buf integer source buffer handle
---- @field namespace integer extmark namespace
 --- @field extmark_id integer selection range extmark
 
---- @class PatchContent
---- @field before string[] lines before the selection
---- @field selected string[] selected lines
---- @field after string[] lines after the selection
-
---- @class PatchCapture
---- @field location PatchLocation source buffer and selected range
---- @field content PatchContent captured buffer contents
+--- @class PatchRange
+--- @field source_buf integer source buffer handle
+--- @field start_row integer 0-indexed first row of the selection
+--- @field end_row integer 0-indexed exclusive end row of the selection
 
 --- Exit visual mode and reset the selection highlight.
 local function leave_visual_mode()
@@ -42,11 +37,11 @@ local function get_selection_lines()
   return math.min(start_line, end_line), math.max(start_line, end_line)
 end
 
---- Capture the current buffer around its visual selection.
+--- Track the current buffer's visual selection.
 ---
 --- The extmark keeps the selected line range anchored while surrounding lines change.
 ---
---- @return PatchCapture|nil capture
+--- @return PatchLocation|nil location
 function M.capture()
   local source_buf = vim.api.nvim_get_current_buf()
   leave_visual_mode()
@@ -70,17 +65,66 @@ function M.capture()
   )
 
   return {
-    location = {
-      source_buf = source_buf,
-      namespace = namespace,
-      extmark_id = extmark_id,
-    },
-    content = {
-      before = vim.api.nvim_buf_get_lines(source_buf, 0, start_line - 1, false),
-      selected = vim.api.nvim_buf_get_lines(source_buf, start_line - 1, end_line, false),
-      after = vim.api.nvim_buf_get_lines(source_buf, end_line, -1, false),
-    },
+    source_buf = source_buf,
+    extmark_id = extmark_id,
   }
+end
+
+--- Resolve the current line range of a tracked selection.
+---
+--- @param location PatchLocation
+--- @return PatchRange|nil range
+function M.resolve(location)
+  if not vim.api.nvim_buf_is_valid(location.source_buf) then
+    return nil
+  end
+
+  local position = vim.api.nvim_buf_get_extmark_by_id(
+    location.source_buf,
+    namespace,
+    location.extmark_id,
+    { details = true }
+  )
+
+  if #position == 0 or not position[3] or position[3].end_row == nil then
+    return nil
+  end
+
+  return {
+    source_buf = location.source_buf,
+    start_row = position[1],
+    end_row = position[3].end_row,
+  }
+end
+
+--- Update a tracked selection's extmark decoration while preserving its range.
+---
+--- @param location PatchLocation
+--- @param decoration? table
+--- @return boolean updated
+function M.decorate(location, decoration)
+  local range = M.resolve(location)
+  if not range then
+    return false
+  end
+
+  local options = vim.tbl_extend("force", {
+    id = location.extmark_id,
+    end_row = range.end_row,
+    end_col = 0,
+    right_gravity = true,
+    end_right_gravity = false,
+  }, decoration or {})
+
+  vim.api.nvim_buf_set_extmark(
+    location.source_buf,
+    namespace,
+    range.start_row,
+    0,
+    options
+  )
+
+  return true
 end
 
 --- Remove a tracked selection.
@@ -90,7 +134,7 @@ function M.clear(location)
   if vim.api.nvim_buf_is_valid(location.source_buf) then
     vim.api.nvim_buf_del_extmark(
       location.source_buf,
-      location.namespace,
+      namespace,
       location.extmark_id
     )
   end

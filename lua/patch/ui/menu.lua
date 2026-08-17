@@ -18,7 +18,7 @@ local popup_options = {
   border = {
     style = "single",
     text = {
-      top = "[Choose Item]",
+      top = " Select model ",
       top_align = "center",
     },
   },
@@ -30,19 +30,23 @@ local popup_options = {
 --- Open a menu containing Pi models.
 ---
 ---@param models PatchModel[]
+---@param selected_model string effective model selector
 ---@param on_submit fun(model: PatchModel)
-function M.open(models, on_submit)
+function M.open(models, selected_model, on_submit)
   local lines = {}
 
   for _, model in ipairs(models) do
-    table.insert(lines, Menu.item(model.id, {
+    local selector = model.provider .. "/" .. model.id
+    local marker = selector == selected_model and "● " or "  "
+
+    table.insert(lines, Menu.item(marker .. model.id, {
       model = model,
     }))
   end
 
   local menu = Menu(popup_options, {
     lines = lines,
-    max_width = 20,
+    max_width = 22,
     keymap = {
       focus_next = { "j", "<Down>", "<Tab>" },
       focus_prev = { "k", "<Up>", "<S-Tab>" },

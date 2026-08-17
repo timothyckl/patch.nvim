@@ -1,11 +1,20 @@
 local M = {}
-local notify = require("patch.notify")
+local rpc = require("patch.rpc")
 
 local DEFAULT_SYSTEM_PROMPT = "You are an inline code editor. Given the selection and an instruction, reply with only the replacement code for the SELECTED region. No commentary, no explanations, no markdown fences."
 local system_prompt = DEFAULT_SYSTEM_PROMPT
 local configured_model
 local session_model
 local primary_model
+
+---@param callback function
+---@param value any
+---@param err string|nil
+local function schedule_complete(callback, value, err)
+  vim.schedule(function()
+    callback(value, err)
+  end)
+end
 
 ---@class PatchClientOptions
 ---@field system_prompt? string
@@ -26,144 +35,9 @@ end
 ---@field name string
 ---@field provider string
 
---- Create a callback that decodes newline-delimited JSON records.
----
----@param on_record fun(record: table)
----@param on_error fun(err: string)
----@return fun(error_message: string|nil, data: string|nil)
-local function read_jsonl(on_record, on_error)
-  local buffer = ""
-  local stopped = false
-
-  return function(error_message, data)
-    if stopped then
-      return
-    end
-
-    if error_message then
-      stopped = true
-      on_error("Failed to read Pi output: " .. error_message)
-      return
-    end
-
-    buffer = buffer .. (data or "")
-
-    while true do
-      local newline = buffer:find("\n", 1, true)
-      if not newline then
-        return
-      end
-
-      local line = buffer:sub(1, newline - 1):gsub("\r$", "")
-      buffer = buffer:sub(newline + 1)
-
-      if line ~= "" then
-        local decoded, record = pcall(vim.json.decode, line)
-
-        if not decoded then
-          stopped = true
-          on_error("Failed to decode Pi output: " .. record)
-          return
-        end
-
-        on_record(record)
-      end
-    end
-  end
-end
-
---- Run a one-shot Pi RPC command and return its response.
----
----@param command table
----@param on_complete fun(record: table|nil, err: string|nil)
-local function request_rpc(command, on_complete)
-  local process
-  local completed = false
-
-  command.id = command.id or command.type
-
-  local function close_process()
-    local current_process = process
-    process = nil
-
-    if current_process then
-      pcall(current_process.write, current_process, nil)
-    end
-  end
-
-  ---@param record table|nil
-  ---@param err string|nil
-  local function complete(record, err)
-    if completed then
-      return
-    end
-
-    completed = true
-    close_process()
-
-    vim.schedule(function()
-      on_complete(record, err)
-    end)
-  end
-
-  ---@param result vim.SystemCompleted
-  local function handle_exit(result)
-    process = nil
-
-    if completed then
-      return
-    end
-
-    if result.code ~= 0 then
-      complete(nil, "Pi exited with code " .. result.code)
-    else
-      complete(nil, "Pi exited before returning " .. command.type)
-    end
-  end
-
-  ---@param record table
-  local function handle_record(record)
-    if record.type ~= "response" or record.command ~= command.type or record.id ~= command.id then
-      return
-    end
-
-    if not record.success then
-      complete(nil, "Pi rejected " .. command.type .. ": " .. tostring(record.error))
-      return
-    end
-
-    complete(record, nil)
-  end
-
-  local handle_stdout = read_jsonl(handle_record, function(err)
-    complete(nil, err)
-  end)
-
-  local started, process_or_error = pcall(vim.system,
-    { "pi", "--mode", "rpc", "--no-session" },
-    { stdin = true, stdout = handle_stdout },
-    handle_exit
-  )
-
-  if not started then
-    complete(nil, "Failed to start Pi: " .. tostring(process_or_error))
-    return
-  end
-
-  process = process_or_error
-
-  local sent, write_error = pcall(function()
-    process:write(vim.json.encode(command) .. "\n")
-  end)
-
-  if not sent then
-    complete(nil, "Failed to send " .. command.type .. " to Pi: " .. tostring(write_error))
-  end
-end
-
 ---@class PatchRequest
 ---@field state "pending"|"cancelled"|"completed"
----@field process? vim.SystemObj
+---@field connection? PatchRpcConnection
 ---@field on_complete fun(res: string|nil, err: string|nil)
 
 --- Abort a Pi request.
@@ -177,12 +51,8 @@ function M.cancel(request)
 
   request.state = "cancelled"
 
-  if request.process then
-    pcall(
-      request.process.write,
-      request.process,
-      vim.json.encode({ type = "abort" }) .. "\n"
-    )
+  if request.connection then
+    request.connection:send({ type = "abort" })
   end
 
   vim.schedule(function()
@@ -192,23 +62,23 @@ function M.cancel(request)
   return true
 end
 
--- TODO: Cache available models per session to avoid RPC startup latency on every menu open.
+-- TODO: Cache available models and effective model state per session to avoid RPC startup latency when opening the menu.
 --- Retrieve the models available to Pi.
 ---
 ---@param on_complete fun(models: PatchModel[]|nil, err: string|nil)
 function M.get_available_models(on_complete)
-  request_rpc({ type = "get_available_models" }, function(record, err)
+  rpc.request({ type = "get_available_models" }, function(record, err)
     if err then
-      on_complete(nil, err)
+      schedule_complete(on_complete, nil, err)
       return
     end
 
     if type(record.data) ~= "table" or type(record.data.models) ~= "table" then
-      on_complete(nil, "Pi returned an invalid model list")
+      schedule_complete(on_complete, nil, "Pi returned an invalid model list")
       return
     end
 
-    on_complete(record.data.models, nil)
+    schedule_complete(on_complete, record.data.models, nil)
   end)
 end
 
@@ -221,39 +91,35 @@ function M.select_model(model)
   return session_model
 end
 
---- Resolve the model label used by Patch.
+--- Resolve the effective model selector used by Patch.
 ---
 ---@param on_complete fun(model: string|nil, err: string|nil)
 function M.resolve_model(on_complete)
   local override = session_model or configured_model
   if override then
-    vim.schedule(function()
-      on_complete(override, nil)
-    end)
+    schedule_complete(on_complete, override, nil)
     return
   end
 
   if primary_model then
-    vim.schedule(function()
-      on_complete(primary_model, nil)
-    end)
+    schedule_complete(on_complete, primary_model, nil)
     return
   end
 
-  request_rpc({ type = "get_state" }, function(record, err)
+  rpc.request({ type = "get_state" }, function(record, err)
     if err then
-      on_complete(nil, err)
+      schedule_complete(on_complete, nil, err)
       return
     end
 
     local model = type(record.data) == "table" and record.data.model or nil
     if type(model) ~= "table" or type(model.provider) ~= "string" or type(model.id) ~= "string" then
-      on_complete(nil, "Pi returned no primary model")
+      schedule_complete(on_complete, nil, "Pi returned no primary model")
       return
     end
 
     primary_model = model.provider .. "/" .. model.id
-    on_complete(primary_model, nil)
+    schedule_complete(on_complete, primary_model, nil)
   end)
 end
 
@@ -265,22 +131,11 @@ end
 function M.request(message, on_complete)
   local request = {
     state = "pending",
-    process = nil,
+    connection = nil,
     on_complete = on_complete,
   }
 
   local assistant_text
-
-  notify.send("patch: generating...", vim.log.levels.INFO)
-
-  --- Schedule a message for display on Neovim's main event loop.
-  ---
-  --- @param message string
-  local function display(message)
-    vim.schedule(function()
-      notify.send(message, vim.log.levels.ERROR)
-    end)
-  end
 
   --- Complete this request exactly once on Neovim's main event loop.
   ---
@@ -307,7 +162,6 @@ function M.request(message, on_complete)
     end
 
     complete(nil, err)
-    display(err)
   end
 
   --- Join the text parts of an assistant message.
@@ -326,19 +180,19 @@ function M.request(message, on_complete)
     return table.concat(parts, "\n")
   end
 
-  --- Clear references to this request's process.
-  local function clear_process()
-    request.process = nil
+  --- Clear references to this request's connection.
+  local function clear_connection()
+    request.connection = nil
   end
 
-  --- Close the process input stream and clear its references.
-  local function close_process()
-    local current_process = request.process
+  --- Close the connection and clear its references.
+  local function close_connection()
+    local connection = request.connection
 
-    clear_process()
+    clear_connection()
 
-    if current_process then
-      pcall(current_process.write, current_process, nil)
+    if connection then
+      connection:close()
     end
   end
 
@@ -346,7 +200,7 @@ function M.request(message, on_complete)
   ---
   --- @param result vim.SystemCompleted
   local function handle_exit(result)
-    clear_process()
+    clear_connection()
 
     if request.state == "pending" then
       if result.code ~= 0 then
@@ -363,7 +217,7 @@ function M.request(message, on_complete)
   local function handle_record(record)
     if request.state == "cancelled" then
       if record.type == "agent_settled" then
-        close_process()
+        close_connection()
       end
 
       return
@@ -371,7 +225,7 @@ function M.request(message, on_complete)
 
     if record.type == "response" and record.command == "prompt" and not record.success then
       fail("Pi rejected the prompt: " .. record.error)
-      close_process()
+      close_connection()
       return
     end
 
@@ -389,50 +243,46 @@ function M.request(message, on_complete)
         complete(replacement, nil)
       end
 
-      close_process()
+      close_connection()
       return
     end
   end
 
-  local handle_stdout = read_jsonl(handle_record, function(err)
-    if request.state == "pending" then
-      fail(err)
-    end
-
-    close_process()
-  end)
-
-  local command = { "pi", "--mode", "rpc", "--system-prompt", system_prompt, "--no-session", "--thinking", "off" }
+  local args = { "--system-prompt", system_prompt, "--no-session", "--thinking", "off" }
   local model = session_model or configured_model
 
   if model then
-    table.insert(command, "--model")
-    table.insert(command, model)
+    table.insert(args, "--model")
+    table.insert(args, model)
   end
 
-  local started, process_or_error = pcall(vim.system,
-    command,
-    { stdin = true, stdout = handle_stdout },
-    handle_exit
-  )
+  local connection, start_error = rpc.start(args, {
+    on_record = handle_record,
+    on_error = function(err)
+      if request.state == "pending" then
+        fail(err)
+      end
 
-  if not started then
-    fail("Failed to start Pi: " .. tostring(process_or_error))
+      close_connection()
+    end,
+    on_exit = handle_exit,
+  })
+
+  if not connection then
+    fail(tostring(start_error))
     return request
   end
 
-  request.process = process_or_error
+  request.connection = connection
 
-  local sent, write_error = pcall(function()
-    request.process:write(vim.json.encode({
-      type = "prompt",
-      message = message,
-    }) .. "\n")
-  end)
+  local sent, write_error = connection:send({
+    type = "prompt",
+    message = message,
+  })
 
   if not sent then
     fail("Failed to send prompt to Pi: " .. tostring(write_error))
-    close_process()
+    close_connection()
   end
 
   return request
