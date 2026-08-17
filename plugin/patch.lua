@@ -19,3 +19,7 @@ vim.api.nvim_create_user_command("PatchRetry", patch.retry, {
 vim.api.nvim_create_user_command("PatchCancel", patch.cancel, {
   desc = "Cancel the active replacement request",
 })
+
+vim.api.nvim_create_user_command("PatchMenu", patch.open_menu, {
+  desc = "List models available to Pi",
+})

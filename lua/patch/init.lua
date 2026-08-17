@@ -9,22 +9,56 @@ local M = {}
 local active_proposal = nil
 local active_message = nil
 local active_request = nil
-local requesting = false
+local active_capture = nil
 
 ---@class PatchOptions
 ---@field notify? function|table notification provider compatible with vim.notify
 ---@field system_prompt? string custom Pi system prompt
+---@field model? string Pi model selector in provider/model format
 
 ---@param opts? PatchOptions
 function M.setup(opts)
   opts = opts or {}
   notify.setup(opts.notify)
-  client.setup({ system_prompt = opts.system_prompt })
+  client.setup({
+    system_prompt = opts.system_prompt,
+    model = opts.model,
+  })
 end
 
 ---@param message string
 local function warn(message)
   notify.send("patch: " .. message, vim.log.levels.WARN)
+end
+
+--- Open a menu containing the models available to Pi.
+function M.open_menu()
+  if active_capture then
+    warn("submit or close the active instruction first")
+    return
+  end
+
+  client.get_available_models(function(models, err)
+    if active_capture then
+      warn("submit or close the active instruction first")
+      return
+    end
+
+    if err then
+      notify.send("patch: " .. err, vim.log.levels.ERROR)
+      return
+    end
+
+    if not models or #models == 0 then
+      notify.send("patch: Pi reported no available models", vim.log.levels.WARN)
+      return
+    end
+
+    ui.open_menu(models, function(model)
+      local selected_model = client.select_model(model)
+      notify.send("patch: using " .. selected_model, vim.log.levels.INFO)
+    end)
+  end)
 end
 
 local function clear_active_patch()
@@ -36,7 +70,12 @@ end
 --       See lua/patch/ui/
 --- Capture a visual selection, request a replacement, and apply it to the tracked range.
 function M.start()
-  if requesting then
+  if active_capture then
+    warn("submit or close the active instruction first")
+    return
+  end
+
+  if active_request then
     warn("a replacement is already being generated")
     return
   end
@@ -53,35 +92,60 @@ function M.start()
     return
   end
 
-  ui.open_input(function(instruction)
-    local message = prompt.build(capture, instruction)
-    requesting = true
+  active_capture = capture
 
-    local request
-    request = client.request(message, function(res, err)
-      if active_request ~= request then
+  client.resolve_model(function(model, model_error)
+    if active_capture ~= capture then
+      return
+    end
+
+    if model_error then
+      active_capture = nil
+      selection.clear(capture.location)
+      notify.send("patch: " .. model_error, vim.log.levels.ERROR)
+      return
+    end
+
+    ui.open_input(model, function(instruction)
+      if active_capture ~= capture then
         return
       end
 
-      active_request = nil
-      requesting = false
+      active_capture = nil
+      local message = prompt.build(capture, instruction)
 
-      if err then
-        selection.clear(capture.location)
+      local request
+      request = client.request(message, function(res, err)
+        if active_request ~= request then
+          return
+        end
+
+        active_request = nil
+
+        if err then
+          selection.clear(capture.location)
+          return
+        end
+
+        local proposal = replacement.apply(capture.location, res)
+        if not proposal then
+          notify.send("patch: selection no longer exists", vim.log.levels.ERROR)
+          return
+        end
+
+        active_proposal = proposal
+        active_message = message
+        notify.send("patch: complete", vim.log.levels.INFO)
+      end)
+      active_request = request
+    end, function()
+      if active_capture ~= capture then
         return
       end
 
-      local proposal = replacement.apply(capture.location, res)
-      if not proposal then
-        notify.send("patch: selection no longer exists", vim.log.levels.ERROR)
-        return
-      end
-
-      active_proposal = proposal
-      active_message = message
-      notify.send("patch: complete", vim.log.levels.INFO)
+      active_capture = nil
+      selection.clear(capture.location)
     end)
-    active_request = request
   end)
 end
 

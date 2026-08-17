@@ -38,6 +38,7 @@ npx @earendil-works/pi-ai login [provider]
     require("patch").setup({
       notify = require("notify"),
       -- system_prompt = "Custom system instructions...",
+      -- model = "openai/gpt-5.6-sol",
     })
 
     vim.keymap.set("x", "<leader>p", "<Cmd>PatchCapture<CR>", { desc = "Capture selection and request a patch" })
@@ -45,18 +46,21 @@ npx @earendil-works/pi-ai login [provider]
     vim.keymap.set("n", "<leader>pr", "<Cmd>PatchReject<CR>", { desc = "Reject the active patch and restore the original" })
     vim.keymap.set("n", "<leader>pR", "<Cmd>PatchRetry<CR>", { desc = "Generate a new active patch proposal" })
     vim.keymap.set("n", "<leader>pc", "<Cmd>PatchCancel<CR>", { desc = "Cancel the active patch generation request" })
+    vim.keymap.set("n", "<leader>pm", "<Cmd>PatchMenu<CR>", { desc = "Select the model used for patch requests" })
   end,
 }
 ```
 
 `system_prompt` is optional. When set, it completely replaces Patch's built-in system prompt.
 
+`model` is optional. When omitted, Patch uses Pi's primary model. A model selected from `PatchMenu` overrides the configured model for the current Neovim session.
+
 ## To-do
 
 - [ ] Build codebase-relevant context separately from prompt construction.
 - [x] Reject empty or whitespace-only instructions before starting generation.
 - [x] Make cancellation request-scoped instead of global.
-- [ ] Add a model-selection UI and mappable commands that let users choose or cycle the model used for Patch requests. By default, Patch uses Pi's primary model.
+- [x] Add a model-selection UI for choosing the model used by Patch requests, with optional configuration and Pi's primary model as the default.
 - [x] Clean up undo behavior so undoing an accepted patch restores the original text like rejection does, without leaving or duplicating generated content.
 - [x] Improve retry feedback by temporarily turning off the existing diff preview while a new replacement is being generated, then displaying the updated preview when the retry completes.
 - [x] Expose the system prompt to users as a setup configuration option.
