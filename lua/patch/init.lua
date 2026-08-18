@@ -201,7 +201,11 @@ function M.accept()
 
   if replacement.accept(workflow.proposal) then
     active_workflow = nil
+  elseif workflow.phase == "retrying" then
+    warn("the active proposal cannot be accepted")
   else
+    -- The proposal was finalized because its source buffer is unavailable.
+    active_workflow = nil
     warn("the active proposal cannot be accepted")
   end
 end
@@ -230,6 +234,13 @@ function M.retry()
   end
 
   if not replacement.begin_retry(workflow.proposal) then
+    if workflow.phase == "retrying" then
+      warn("the active proposal cannot be retried")
+      return
+    end
+
+    -- The proposal was finalized because its source buffer is unavailable.
+    active_workflow = nil
     warn("the active proposal cannot be retried")
     return
   end

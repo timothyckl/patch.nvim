@@ -72,10 +72,12 @@ end
 
 --- Resolve the current line range of a tracked selection.
 ---
+--- Returns nil when the source buffer is no longer loaded.
+---
 --- @param location PatchLocation
 --- @return PatchRange|nil range
 function M.resolve(location)
-  if not vim.api.nvim_buf_is_valid(location.source_buf) then
+  if not vim.api.nvim_buf_is_loaded(location.source_buf) then
     return nil
   end
 
@@ -131,7 +133,7 @@ end
 ---
 --- @param location PatchLocation
 function M.clear(location)
-  if vim.api.nvim_buf_is_valid(location.source_buf) then
+  if vim.api.nvim_buf_is_loaded(location.source_buf) then
     vim.api.nvim_buf_del_extmark(
       location.source_buf,
       namespace,

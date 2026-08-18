@@ -10,9 +10,7 @@ local previews = {}
 ---@field generated_lines string[]
 ---@field status "pending"|"retrying"|"finished"
 
---- Convert model output into lines accepted by nvim_buf_set_lines.
----
---- A terminal newline belongs to the textual response, not a new buffer line.
+--- Convert model output into lines accepted by nvim_buf_set_lines, excluding a terminal newline from creating a new buffer line.
 ---
 ---@param response string
 ---@return string[] lines
@@ -127,14 +125,12 @@ local function clear_preview(proposal)
     previews[source_buf] = nil
   end
 
-  if vim.api.nvim_buf_is_valid(source_buf) then
-    if proposal.generated_mark then
-      vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.generated_mark)
-      proposal.generated_mark = nil
-    end
-
-    selection.clear(proposal.location)
+  if proposal.generated_mark and vim.api.nvim_buf_is_loaded(source_buf) then
+    vim.api.nvim_buf_del_extmark(source_buf, namespace, proposal.generated_mark)
   end
+
+  proposal.generated_mark = nil
+  selection.clear(proposal.location)
 end
 
 --- Preview a generated replacement after a tracked selection.
@@ -184,7 +180,7 @@ function M.update(proposal, response)
   return proposal
 end
 
---- Accept a proposal by replacing the original selected lines.
+--- Accept a proposal by replacing the original selected lines, finalising it if the source buffer is no longer available.
 ---
 ---@param proposal PatchProposal
 ---@return boolean accepted
@@ -195,6 +191,8 @@ function M.accept(proposal)
 
   local range = selection.resolve(proposal.location)
   if not range then
+    proposal.status = "finished"
+    clear_preview(proposal)
     return false
   end
 
@@ -222,17 +220,12 @@ function M.reject(proposal)
     return false
   end
 
-  local source_buf = proposal.location.source_buf
-  if not vim.api.nvim_buf_is_valid(source_buf) then
-    return false
-  end
-
   proposal.status = "finished"
   clear_preview(proposal)
   return true
 end
 
---- Hide a proposal while another response is requested.
+--- Hide a proposal while another response is requested, finalising it if its tracked selection no longer exists.
 ---
 ---@param proposal PatchProposal
 ---@return boolean started
@@ -242,6 +235,8 @@ function M.begin_retry(proposal)
   end
 
   if not hide_preview(proposal) then
+    proposal.status = "finished"
+    clear_preview(proposal)
     return false
   end
 
