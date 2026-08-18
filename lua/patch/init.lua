@@ -56,16 +56,24 @@ local function report_request_error(err)
   end
 end
 
+---@return boolean blocked
+local function block_menu_for_active_input()
+  if not active_workflow or active_workflow.phase ~= "input" then
+    return false
+  end
+
+  warn("submit or close the active instruction first")
+  return true
+end
+
 --- Open a menu containing the models available to Pi.
 function M.open_menu()
-  if active_workflow and active_workflow.phase == "input" then
-    warn("submit or close the active instruction first")
+  if block_menu_for_active_input() then
     return
   end
 
   client.resolve_model(function(selected_model, model_error)
-    if active_workflow and active_workflow.phase == "input" then
-      warn("submit or close the active instruction first")
+    if block_menu_for_active_input() then
       return
     end
 
@@ -75,8 +83,7 @@ function M.open_menu()
     end
 
     client.get_available_models(function(models, err)
-      if active_workflow and active_workflow.phase == "input" then
-        warn("submit or close the active instruction first")
+      if block_menu_for_active_input() then
         return
       end
 
@@ -115,6 +122,47 @@ local function block_start_for_active_workflow()
   return true
 end
 
+--- Run a generation request and return the workflow to review when it succeeds.
+---
+---@param workflow PatchWorkflow
+---@param phase "generating"|"retrying"
+---@param apply_response fun(response: string): PatchProposal|nil, string|nil
+---@param abort fun()
+local function generate(workflow, phase, apply_response, abort)
+  workflow.phase = phase
+  report_info("generating...")
+
+  local request
+  request = client.request(workflow.message, function(response, err)
+    if active_workflow ~= workflow
+        or workflow.phase ~= phase
+        or workflow.request ~= request then
+      return
+    end
+
+    workflow.request = nil
+
+    if err then
+      abort()
+      active_workflow = nil
+      report_request_error(err)
+      return
+    end
+
+    local completed, completion_error = apply_response(response)
+    if not completed then
+      abort()
+      active_workflow = nil
+      report_error(tostring(completion_error))
+      return
+    end
+
+    workflow.phase = "reviewing"
+    report_info("complete")
+  end)
+  workflow.request = request
+end
+
 --- Capture a visual selection, request a replacement, and preview it at the tracked range.
 function M.start()
   if block_start_for_active_workflow() then
@@ -148,39 +196,18 @@ function M.start()
 
     workflow.message = prompt.build(workflow.content, instruction)
     workflow.content = nil
-    workflow.phase = "generating"
-    report_info("generating...")
 
-    local request
-    request = client.request(workflow.message, function(response, err)
-      if active_workflow ~= workflow
-          or workflow.phase ~= "generating"
-          or workflow.request ~= request then
-        return
-      end
-
-      workflow.request = nil
-
-      if err then
-        active_workflow = nil
-        selection.clear(workflow.location)
-        report_request_error(err)
-        return
-      end
-
+    generate(workflow, "generating", function(response)
       local proposal = replacement.apply(workflow.location, response)
       if not proposal then
-        active_workflow = nil
-        selection.clear(workflow.location)
-        report_error("selection no longer exists")
-        return
+        return nil, "selection no longer exists"
       end
 
-      workflow.phase = "reviewing"
       workflow.proposal = proposal
-      report_info("complete")
+      return proposal
+    end, function()
+      selection.clear(workflow.location)
     end)
-    workflow.request = request
   end, function()
     if active_workflow ~= workflow or workflow.phase ~= "input" then
       return
@@ -247,38 +274,11 @@ function M.retry()
     return
   end
 
-  workflow.phase = "retrying"
-  report_info("generating...")
-
-  local request
-  request = client.request(workflow.message, function(response, err)
-    if active_workflow ~= workflow
-        or workflow.phase ~= "retrying"
-        or workflow.request ~= request then
-      return
-    end
-
-    workflow.request = nil
-
-    if err then
-      replacement.abort_retry(workflow.proposal)
-      active_workflow = nil
-      report_request_error(err)
-      return
-    end
-
-    local updated, update_error = replacement.complete_retry(workflow.proposal, response)
-    if not updated then
-      replacement.abort_retry(workflow.proposal)
-      active_workflow = nil
-      report_error(tostring(update_error))
-      return
-    end
-
-    workflow.phase = "reviewing"
-    report_info("complete")
+  generate(workflow, "retrying", function(response)
+    return replacement.complete_retry(workflow.proposal, response)
+  end, function()
+    replacement.abort_retry(workflow.proposal)
   end)
-  workflow.request = request
 end
 
 --- Cancel the active replacement request, if one exists.
