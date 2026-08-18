@@ -20,6 +20,23 @@ local function read_jsonl(on_record, on_error)
   local buffer = ""
   local stopped = false
 
+  local function emit(line)
+    line = line:gsub("\r$", "")
+    if line == "" then
+      return true
+    end
+
+    local decoded, record = pcall(vim.json.decode, line)
+    if not decoded then
+      stopped = true
+      on_error("Failed to decode Pi output: " .. record)
+      return false
+    end
+
+    on_record(record)
+    return true
+  end
+
   return function(error_message, data)
     if stopped then
       return
@@ -36,24 +53,38 @@ local function read_jsonl(on_record, on_error)
     while true do
       local newline = buffer:find("\n", 1, true)
       if not newline then
-        return
+        break
       end
 
-      local line = buffer:sub(1, newline - 1):gsub("\r$", "")
+      local line = buffer:sub(1, newline - 1)
       buffer = buffer:sub(newline + 1)
 
-      if line ~= "" then
-        local decoded, record = pcall(vim.json.decode, line)
-        if not decoded then
-          stopped = true
-          on_error("Failed to decode Pi output: " .. record)
-          return
-        end
-
-        on_record(record)
+      if not emit(line) then
+        return
       end
     end
+
+    if data == nil and buffer ~= "" then
+      local line = buffer
+      buffer = ""
+      emit(line)
+    end
   end
+end
+
+--- Format a non-zero Pi process result, including captured stderr when available.
+---
+---@param result vim.SystemCompleted
+---@return string message
+function M.format_exit_error(result)
+  local message = "Pi exited with code " .. result.code
+  local stderr = vim.trim(result.stderr or "")
+
+  if stderr ~= "" then
+    return message .. ": " .. stderr
+  end
+
+  return message
 end
 
 --- Start a Pi RPC connection.
@@ -173,7 +204,7 @@ function M.request(command, on_complete)
       end
 
       if result.code ~= 0 then
-        complete(nil, "Pi exited with code " .. result.code)
+        complete(nil, M.format_exit_error(result))
       else
         complete(nil, "Pi exited before returning " .. command.type)
       end

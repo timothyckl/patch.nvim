@@ -204,7 +204,7 @@ function M.request(message, on_complete)
 
     if request.state == "pending" then
       if result.code ~= 0 then
-        fail("Pi exited with code " .. result.code)
+        fail(rpc.format_exit_error(result))
       else
         fail("Pi exited before returning a response")
       end
