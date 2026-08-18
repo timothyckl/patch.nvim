@@ -135,7 +135,7 @@ function M.request(message, on_complete)
     on_complete = on_complete,
   }
 
-  local assistant_text
+  local assistant_message
 
   --- Complete this request exactly once on Neovim's main event loop.
   ---
@@ -230,17 +230,24 @@ function M.request(message, on_complete)
     end
 
     if record.type == "message_end" and record.message.role == "assistant" then
-      assistant_text = extract_text(record.message)
+      -- Pi may retry failed turns, so judge only the final message once settled.
+      assistant_message = record.message
       return
     end
 
     if record.type == "agent_settled" then
-      local replacement = assistant_text
-
-      if replacement == nil then
+      if assistant_message == nil then
         fail("Pi returned no response")
+      elseif assistant_message.stopReason == "error" then
+        local error_message = assistant_message.errorMessage
+        if type(error_message) ~= "string" or error_message == "" then
+          error_message = "Pi request failed"
+        end
+
+        fail(error_message)
       else
-        complete(replacement, nil)
+        -- Empty successful output is a valid deletion replacement.
+        complete(extract_text(assistant_message), nil)
       end
 
       close_connection()
