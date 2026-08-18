@@ -201,13 +201,15 @@ function M.accept()
 
   if replacement.accept(workflow.proposal) then
     active_workflow = nil
-  elseif workflow.phase == "retrying" then
-    warn("the active proposal cannot be accepted")
-  else
+    return
+  end
+
+  if workflow.proposal.status == "finished" then
     -- The proposal was finalized because its source buffer is unavailable.
     active_workflow = nil
-    warn("the active proposal cannot be accepted")
   end
+
+  warn("the active proposal cannot be accepted")
 end
 
 --- Reject the active replacement proposal.

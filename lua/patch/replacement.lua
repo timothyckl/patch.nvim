@@ -197,10 +197,9 @@ function M.accept(proposal)
   end
 
   local source_buf = proposal.location.source_buf
-  proposal.status = "finished"
-  clear_preview(proposal)
 
-  vim.api.nvim_buf_set_lines(
+  local ok = pcall(
+    vim.api.nvim_buf_set_lines,
     source_buf,
     range.start_row,
     range.end_row,
@@ -208,6 +207,12 @@ function M.accept(proposal)
     proposal.generated_lines
   )
 
+  if not ok then
+    return false
+  end
+
+  proposal.status = "finished"
+  clear_preview(proposal)
   return true
 end
 
