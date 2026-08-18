@@ -20,9 +20,7 @@ local function leave_visual_mode()
   )
 end
 
---- Read the most recent visual selection from the '< and '> marks.
----
---- Normalises the range so that start_line <= end_line.
+--- Return the normalised line range of the most recent visual selection.
 ---
 --- @return integer|nil start_line 1-indexed first line of the selection
 --- @return integer|nil end_line 1-indexed last line of the selection
@@ -37,9 +35,7 @@ local function get_selection_lines()
   return math.min(start_line, end_line), math.max(start_line, end_line)
 end
 
---- Track the current buffer's visual selection.
----
---- The extmark keeps the selected line range anchored while surrounding lines change.
+--- Track the current buffer's visual selection with an extmark that anchors its line range.
 ---
 --- @return PatchLocation|nil location
 function M.capture()
@@ -70,9 +66,7 @@ function M.capture()
   }
 end
 
---- Resolve the current line range of a tracked selection.
----
---- Returns nil when the source buffer is no longer loaded.
+--- Resolve a tracked selection’s current line range, or nil if its source buffer is unloaded.
 ---
 --- @param location PatchLocation
 --- @return PatchRange|nil range
