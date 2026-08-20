@@ -1,8 +1,8 @@
-# patch
+# patch.nvim
 
 A simple agentic inline code editor for Neovim.
 
-Requires Neovim 0.10+, [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and an authenticated Pi installation.
+Requires Neovim 0.10+, [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and an authenticated [Pi](https://github.com/earendil-works/pi) installation.
 
 ## How it works
 
@@ -25,30 +25,57 @@ cd ~/.pi/agent
 npx @earendil-works/pi-ai login [provider]
 ```
 
-## Configuration
+## Installation
+
+[nvim-notify](https://github.com/rcarriga/nvim-notify) is optional. Omit it from the examples below and remove the `notify` option from the configuration to use `vim.notify` instead.
+
+### lazy.nvim
 
 ```lua
 {
-  "tim/tau.nvim",
+  "tim/patch.nvim",
   dependencies = {
     "MunifTanjim/nui.nvim",
     "rcarriga/nvim-notify",
   },
-  config = function()
-    require("patch").setup({
-      notify = require("notify"),
-      -- system_prompt = "Custom system instructions...",
-      -- model = "openai/gpt-5.6-sol",
-    })
-
-    vim.keymap.set("x", "<leader>p", "<Cmd>PatchCapture<CR>", { desc = "Capture selection and request a patch" })
-    vim.keymap.set("n", "<leader>pa", "<Cmd>PatchAccept<CR>", { desc = "Accept the active patch proposal" })
-    vim.keymap.set("n", "<leader>pr", "<Cmd>PatchReject<CR>", { desc = "Reject the active patch and restore the original" })
-    vim.keymap.set("n", "<leader>pR", "<Cmd>PatchRetry<CR>", { desc = "Generate a new active patch proposal" })
-    vim.keymap.set("n", "<leader>pc", "<Cmd>PatchCancel<CR>", { desc = "Cancel the active patch generation request" })
-    vim.keymap.set("n", "<leader>pm", "<Cmd>PatchMenu<CR>", { desc = "Select the model used for patch requests" })
-  end,
 }
+```
+
+### packer.nvim
+
+```lua
+use({
+  "tim/patch.nvim",
+  requires = {
+    "MunifTanjim/nui.nvim",
+    "rcarriga/nvim-notify",
+  },
+})
+```
+
+### vim-plug
+
+```vim
+Plug 'MunifTanjim/nui.nvim'
+Plug 'rcarriga/nvim-notify'
+Plug 'tim/patch.nvim'
+```
+
+## Configuration
+
+```lua
+require("patch").setup({
+  notify = require("notify"),
+  -- system_prompt = "Custom system instructions...",
+  -- model = "openai/gpt-5.6-sol",
+})
+
+vim.keymap.set("x", "<leader>p", "<Cmd>PatchCapture<CR>", { desc = "Capture selection and request a patch" })
+vim.keymap.set("n", "<leader>pa", "<Cmd>PatchAccept<CR>", { desc = "Accept the active patch proposal" })
+vim.keymap.set("n", "<leader>pr", "<Cmd>PatchReject<CR>", { desc = "Reject the active patch and restore the original" })
+vim.keymap.set("n", "<leader>pR", "<Cmd>PatchRetry<CR>", { desc = "Generate a new active patch proposal" })
+vim.keymap.set("n", "<leader>pc", "<Cmd>PatchCancel<CR>", { desc = "Cancel the active patch generation request" })
+vim.keymap.set("n", "<leader>pm", "<Cmd>PatchMenu<CR>", { desc = "Select the model used for patch requests" })
 ```
 
 `system_prompt` is optional. When set, it completely replaces Patch's built-in system prompt.

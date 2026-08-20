@@ -14,4 +14,4 @@ Tests run automatically on pull requests targeting `main`.
 
 ## Issues and Questions
 
-For bug reports, issues, or questions, please [open an issue](https://github.com/timothyckl/tau.nvim/issues/new).
+For bug reports, issues, or questions, please [open an issue](https://github.com/timothyckl/patch.nvim/issues/new).
