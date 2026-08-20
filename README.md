@@ -2,6 +2,8 @@
 
 A simple inline AI code editor for Neovim.
 
+https://github.com/user-attachments/assets/cc311a15-9100-40c4-bb56-2fae57dd90a2
+
 Requires Neovim 0.10+, [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and an authenticated [Pi](https://github.com/earendil-works/pi) installation.
 
 ## How it works
