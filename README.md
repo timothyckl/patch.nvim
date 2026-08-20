@@ -33,7 +33,7 @@ npx @earendil-works/pi-ai login [provider]
 
 ```lua
 {
-  "tim/patch.nvim",
+  "timothyckl/patch.nvim",
   dependencies = {
     "MunifTanjim/nui.nvim",
     "rcarriga/nvim-notify",
@@ -45,7 +45,7 @@ npx @earendil-works/pi-ai login [provider]
 
 ```lua
 use({
-  "tim/patch.nvim",
+  "timothyckl/patch.nvim",
   requires = {
     "MunifTanjim/nui.nvim",
     "rcarriga/nvim-notify",
@@ -58,7 +58,7 @@ use({
 ```vim
 Plug 'MunifTanjim/nui.nvim'
 Plug 'rcarriga/nvim-notify'
-Plug 'tim/patch.nvim'
+Plug 'timothyckl/patch.nvim'
 ```
 
 ## Configuration
