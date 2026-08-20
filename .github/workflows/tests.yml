@@ -1,0 +1,48 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Neovim ${{ matrix.neovim }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        neovim: [v0.10.4, stable]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Neovim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: ${{ matrix.neovim }}
+
+      - name: Checkout mini.test
+        uses: actions/checkout@v7
+        with:
+          repository: nvim-mini/mini.test
+          ref: 35c67cb7f2dc697ed0c7c06400fcf29a8a521d7d
+          path: .deps/mini.test
+
+      - name: Run tests
+        run: nvim --headless --noplugin -u tests/minimal_init.lua -c "lua MiniTest.run()"
+
+      - name: Compile runtime Lua
+        run: >-
+          nvim --headless -u NONE
+          -c "lua for _, f in ipairs(vim.fn.glob('lua/**/*.lua', false, true)) do assert(loadfile(f)) end; assert(loadfile('plugin/patch.lua'))"
+          -c qa

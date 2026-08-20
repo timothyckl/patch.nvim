@@ -1,46 +1,17 @@
-# Contributing to tau.nvim
-
-Thanks for your interest in contributing!
-
-## Getting Started
-
-1. Fork the repo and clone your fork
-2. Ensure you have [Neovim 0.10+](https://neovim.io) and [Bun](https://bun.sh) installed
-3. Build the CLI: `cd cli && bun build --compile src/index.ts --outfile tau`
-
-## Making Changes
-
-1. Create a branch from `main`
-2. Make your changes
-3. Test manually in Neovim to verify behavior
-4. Open a pull request against `main`
-
-## Commit Conventions
-
-This project follows [Conventional Commits](https://www.conventionalcommits.org/). Prefix your commit messages with a type:
-
-- `feat:` — new feature
-- `fix:` — bug fix
-- `docs:` — documentation changes
-- `chore:` — maintenance tasks (CI, dependencies, etc.)
-- `refactor:` — code changes that neither fix a bug nor add a feature
-
-Example: `feat: add support for streaming responses`
+# Contributing
 
 ## Pull Requests
 
-- Keep PRs focused — one feature or fix per PR
-- Write a clear description of what changed and why
-- Ensure existing functionality isn't broken
+1. Fork the repository.
+2. Create a focused branch for your change.
+3. Make your changes and add or update relevant tests.
+4. Open a pull request targeting `main` and describe what changed.
+5. Address any CI failures or review feedback.
 
-## Reporting Issues
+## Tests
 
-Open an issue with:
+Tests run automatically on pull requests targeting `main`.
 
-- Neovim version (`nvim --version`)
-- Steps to reproduce
-- Expected vs actual behavior
+## Issues and Questions
 
-## License
-
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+For bug reports, issues, or questions, please [open an issue](https://github.com/timothyckl/patch.nvim/issues/new).
