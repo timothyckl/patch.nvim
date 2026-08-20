@@ -2,7 +2,7 @@
 
 A simple agentic inline code editor for Neovim.
 
-Built with the [pi-ai](https://github.com/earendil-works/pi/tree/main/packages/ai) package.
+Requires Neovim 0.10+, [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and an authenticated Pi installation.
 
 ## How it works
 
@@ -54,14 +54,3 @@ npx @earendil-works/pi-ai login [provider]
 `system_prompt` is optional. When set, it completely replaces Patch's built-in system prompt.
 
 `model` is optional. When omitted, Patch uses Pi's primary model. `PatchMenu` marks the effective model and allows selecting an override for the current Neovim session.
-
-## To-do
-
-- [ ] Add codebase-relevant context gathering on top of the separate buffer-context and prompt-construction stages.
-- [x] Reject empty or whitespace-only instructions before starting generation.
-- [x] Make cancellation request-scoped instead of global.
-- [x] Add a model-selection UI for choosing the model used by Patch requests, with optional configuration and Pi's primary model as the default.
-- [x] Clean up undo behavior so undoing an accepted patch restores the original text like rejection does, without leaving or duplicating generated content.
-- [x] Improve retry feedback by temporarily turning off the existing diff preview while a new replacement is being generated, then displaying the updated preview when the retry completes.
-- [x] Expose the system prompt to users as a setup configuration option.
-- [x] Show a notification when a replacement has finished generating and is ready for review.
