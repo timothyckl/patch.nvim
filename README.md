@@ -1,6 +1,6 @@
 # patch.nvim
 
-A simple agentic inline code editor for Neovim.
+A simple inline AI code editor for Neovim.
 
 Requires Neovim 0.10+, [nui.nvim](https://github.com/MunifTanjim/nui.nvim), and an authenticated [Pi](https://github.com/earendil-works/pi) installation.
 
