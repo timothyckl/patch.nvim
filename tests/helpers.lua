@@ -24,7 +24,7 @@ function M.delete_buffer(buffer)
 end
 
 function M.wait_for(predicate)
-  assert.is_true(vim.wait(500, predicate, 5), "timed out waiting for scheduled callback")
+  assert(vim.wait(500, predicate, 5), "timed out waiting for scheduled callback")
 end
 
 function M.unload_modules(names)

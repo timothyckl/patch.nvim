@@ -15,9 +15,8 @@ local function dependency_path(environment_name, directory_name)
 end
 
 vim.opt.runtimepath:prepend(root)
-vim.opt.runtimepath:prepend(dependency_path("PLENARY_DIR", "plenary.nvim"))
-vim.opt.runtimepath:prepend(dependency_path("NUI_DIR", "nui.nvim"))
-vim.cmd("runtime plugin/plenary.vim")
+vim.opt.runtimepath:prepend(dependency_path("MINITEST_DIR", "mini.test"))
+require("mini.test").setup({ collect = { emulate_busted = false } })
 
 vim.o.swapfile = false
 vim.o.writebackup = false
