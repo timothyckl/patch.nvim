@@ -135,7 +135,18 @@ function M.start(args, handlers)
   end
 
   local handle_stdout = read_jsonl(handlers.on_record, handle_error)
-  local command = { "pi", "--mode", "rpc" }
+  local command = {
+    "pi",
+    "--mode", "rpc",
+    "--no-context-files",
+    "--no-skills",
+    "--no-extensions",
+    "--no-prompt-templates",
+    "--no-themes",
+    "--no-tools",
+    "--no-approve",
+    "--append-system-prompt", "",
+  }
   vim.list_extend(command, args)
 
   local started, process_or_error = pcall(

@@ -39,7 +39,19 @@ describe("patch.rpc", function()
       on_exit = function() end,
     }))
 
-    assert.are.same({ "pi", "--mode", "rpc", "--no-session" }, invocation.command)
+    assert.are.same({
+      "pi",
+      "--mode", "rpc",
+      "--no-context-files",
+      "--no-skills",
+      "--no-extensions",
+      "--no-prompt-templates",
+      "--no-themes",
+      "--no-tools",
+      "--no-approve",
+      "--append-system-prompt", "",
+      "--no-session",
+    }, invocation.command)
     assert.is_true(invocation.options.stdin)
     assert.is_function(invocation.options.stdout)
     assert.is_true(connection:send({ type = "prompt", message = "hello" }))
