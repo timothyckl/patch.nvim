@@ -1,5 +1,5 @@
 local helpers = require("tests.helpers")
-local selection = require("patch.selection")
+local selection = require("patch.core.selection")
 local eq = MiniTest.expect.equality
 
 local buffer

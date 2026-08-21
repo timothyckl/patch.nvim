@@ -1,5 +1,5 @@
 local M = {}
-local rpc = require("patch.rpc")
+local rpc = require("patch.pi.rpc")
 
 local DEFAULT_SYSTEM_PROMPT = "You are an inline code editor. Given the selection and an instruction, reply with only the replacement code for the SELECTED region. No commentary, no explanations, no markdown fences.\n"
 local system_prompt = DEFAULT_SYSTEM_PROMPT
