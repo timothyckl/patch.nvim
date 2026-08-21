@@ -5,8 +5,8 @@ local original_notify
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      package.loaded["patch.notify"] = nil
-      notify = require("patch.notify")
+      package.loaded["patch.ui.notify"] = nil
+      notify = require("patch.ui.notify")
       original_notify = vim.notify
     end,
     post_case = function()

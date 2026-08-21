@@ -1,4 +1,4 @@
-local prompt = require("patch.prompt")
+local prompt = require("patch.pi.prompt")
 local eq = MiniTest.expect.equality
 
 local T = MiniTest.new_set()

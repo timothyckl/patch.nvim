@@ -1,6 +1,6 @@
 local M = {}
 
-local selection = require("patch.selection")
+local selection = require("patch.core.selection")
 
 --- @class PatchContent
 --- @field before string[] lines before the selection

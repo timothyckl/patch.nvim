@@ -1,5 +1,5 @@
 local M = {}
-local selection = require("patch.selection")
+local selection = require("patch.core.selection")
 
 local namespace = vim.api.nvim_create_namespace("patch-replacement")
 local previews = {}

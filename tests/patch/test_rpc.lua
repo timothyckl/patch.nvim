@@ -3,8 +3,8 @@ local rpc
 local original_system
 
 local function reset()
-  package.loaded["patch.rpc"] = nil
-  rpc = require("patch.rpc")
+  package.loaded["patch.pi.rpc"] = nil
+  rpc = require("patch.pi.rpc")
   original_system = vim.system
 end
 

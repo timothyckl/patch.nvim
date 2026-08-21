@@ -43,15 +43,15 @@ local function reset()
     end,
   }
 
-  package.loaded["patch.rpc"] = rpc
-  package.loaded["patch.client"] = nil
-  client = require("patch.client")
+  package.loaded["patch.pi.rpc"] = rpc
+  package.loaded["patch.pi.client"] = nil
+  client = require("patch.pi.client")
   client.setup()
 end
 
 local function cleanup()
-  package.loaded["patch.client"] = nil
-  package.loaded["patch.rpc"] = nil
+  package.loaded["patch.pi.client"] = nil
+  package.loaded["patch.pi.rpc"] = nil
 end
 
 local T = MiniTest.new_set({ hooks = { pre_case = reset, post_case = cleanup } })
