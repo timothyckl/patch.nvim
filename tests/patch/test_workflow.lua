@@ -155,17 +155,17 @@ test("runs capture, generation, review, and acceptance", function()
   start_and_submit()
 
   eq(requests[1].message, "built:change it")
-  assert(notification("patch: generating...", vim.log.levels.INFO))
+  assert(notification("generating...", vim.log.levels.INFO))
 
   complete_generation("replacement", nil)
   eq(mocks.replacement.applied, { location, "replacement" })
-  assert(notification("patch: complete", vim.log.levels.INFO))
+  assert(notification("complete", vim.log.levels.INFO))
 
   patch.accept()
   eq(mocks.replacement.accepted, proposal)
 
   patch.accept()
-  assert(notification("patch: no active proposal to accept", vim.log.levels.WARN))
+  assert(notification("no active proposal to accept", vim.log.levels.WARN))
 end)
 
 test("rejects a reviewed proposal", function()
@@ -176,7 +176,7 @@ test("rejects a reviewed proposal", function()
 
   eq(mocks.replacement.rejected, proposal)
   patch.reject()
-  assert(notification("patch: no active proposal to reject", vim.log.levels.WARN))
+  assert(notification("no active proposal to reject", vim.log.levels.WARN))
 end)
 
 test("retries a proposal and applies the new response", function()
@@ -189,7 +189,7 @@ test("retries a proposal and applies the new response", function()
 
   complete_generation("second", nil)
   eq(mocks.replacement.retry_completed, { proposal, "second" })
-  assert(notification("patch: complete", vim.log.levels.INFO))
+  assert(notification("complete", vim.log.levels.INFO))
 end)
 
 test("aborts a failed retry and reports the error", function()
@@ -200,7 +200,7 @@ test("aborts a failed retry and reports the error", function()
   complete_generation(nil, "request failed")
 
   eq(mocks.replacement.retry_aborted, proposal)
-  assert(notification("patch: request failed", vim.log.levels.ERROR))
+  assert(notification("request failed", vim.log.levels.ERROR))
 end)
 
 test("cancels an active request and suppresses the cancellation error", function()
@@ -208,11 +208,11 @@ test("cancels an active request and suppresses the cancellation error", function
 
   patch.cancel()
   eq(requests[1].cancelled, true)
-  assert(notification("patch: cancelled", vim.log.levels.INFO))
+  assert(notification("cancelled", vim.log.levels.INFO))
 
   complete_generation(nil, "cancelled")
   eq(mocks.selection.cleared, location)
-  eq(notification("patch: cancelled", vim.log.levels.ERROR), nil)
+  eq(notification("cancelled", vim.log.levels.ERROR), nil)
 end)
 
 test("cleans up when input closes or generation fails", function()
@@ -224,21 +224,21 @@ test("cleans up when input closes or generation fails", function()
   start_and_submit()
   complete_generation(nil, "failed")
   eq(mocks.selection.cleared, location)
-  assert(notification("patch: failed", vim.log.levels.ERROR))
+  assert(notification("failed", vim.log.levels.ERROR))
 end)
 
 test("blocks overlapping workflows", function()
   patch.start()
   patch.start()
-  assert(notification("patch: submit or close the active instruction first", vim.log.levels.WARN))
+  assert(notification("submit or close the active instruction first", vim.log.levels.WARN))
 
   input.submit("change")
   patch.start()
-  assert(notification("patch: a replacement is already being generated", vim.log.levels.WARN))
+  assert(notification("a replacement is already being generated", vim.log.levels.WARN))
 
   complete_generation("replacement", nil)
   patch.start()
-  assert(notification("patch: accept or reject the active proposal first", vim.log.levels.WARN))
+  assert(notification("accept or reject the active proposal first", vim.log.levels.WARN))
 end)
 
 test("ignores stale completion callbacks", function()
@@ -262,7 +262,7 @@ test("opens the model menu and records a selection", function()
   eq(mocks.ui.menu.models[1].id, "model")
   mocks.ui.menu.submit(mocks.ui.menu.models[1])
 
-  assert(notification("patch: using provider/model", vim.log.levels.INFO))
+  assert(notification("using provider/model", vim.log.levels.INFO))
 end)
 
 test("warns when actions have no active workflow", function()
@@ -271,9 +271,9 @@ test("warns when actions have no active workflow", function()
   patch.retry()
   patch.cancel()
 
-  assert(notification("patch: no active proposal to accept", vim.log.levels.WARN))
-  assert(notification("patch: no active proposal to reject", vim.log.levels.WARN))
-  assert(notification("patch: no active proposal to retry", vim.log.levels.WARN))
-  assert(notification("patch: nothing to cancel", vim.log.levels.WARN))
+  assert(notification("no active proposal to accept", vim.log.levels.WARN))
+  assert(notification("no active proposal to reject", vim.log.levels.WARN))
+  assert(notification("no active proposal to retry", vim.log.levels.WARN))
+  assert(notification("nothing to cancel", vim.log.levels.WARN))
 end)
 return T

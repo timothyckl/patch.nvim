@@ -21,17 +21,17 @@ local active_workflow
 
 ---@param message string
 local function warn(message)
-  notify.send("patch: " .. message, vim.log.levels.WARN)
+  notify.send(message, vim.log.levels.WARN)
 end
 
 ---@param message string
 local function report_error(message)
-  notify.send("patch: " .. message, vim.log.levels.ERROR)
+  notify.send(message, vim.log.levels.ERROR)
 end
 
 ---@param message string
 local function report_info(message)
-  notify.send("patch: " .. message, vim.log.levels.INFO)
+  notify.send(message, vim.log.levels.INFO)
 end
 
 ---@param err string|nil
