@@ -26,7 +26,7 @@ T["uses vim.notify with the default title"] = function()
 
   eq(received[1], "message")
   eq(received[2], vim.log.levels.INFO)
-  eq(received[3], { title = "patch.nvim" })
+  eq(received[3], { title = "patch.nvim", render = "compact" })
 end
 
 T["uses a configured callable provider and preserves options"] = function()
@@ -39,7 +39,7 @@ T["uses a configured callable provider and preserves options"] = function()
 
   eq(received[1], "warning")
   eq(received[2], vim.log.levels.WARN)
-  eq(received[3], { title = "custom", timeout = 10 })
+  eq(received[3], { title = "custom", timeout = 10, render = "compact" })
 end
 
 return T

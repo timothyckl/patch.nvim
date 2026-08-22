@@ -11,7 +11,10 @@ end
 ---@param level integer
 ---@param opts? table
 function M.send(message, level, opts)
-  opts = vim.tbl_extend("keep", opts or {}, { title = "patch.nvim" })
+  opts = vim.tbl_extend("keep", opts or {}, {
+    title = "patch.nvim",
+    render = "compact",
+  })
   local notifier = provider or vim.notify
   notifier(message, level, opts)
 end
